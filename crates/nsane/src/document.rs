@@ -24,6 +24,15 @@ pub enum Platform {
 }
 
 impl Platform {
+    /// The layout `save` was read from, and is written back in.
+    pub fn of(save: &Crash3Save) -> Self {
+        if save.igb().padded() {
+            Platform::Switch
+        } else {
+            Platform::Pc
+        }
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             Platform::Switch => "Switch",
@@ -325,11 +334,7 @@ impl Document {
     }
 
     pub fn platform(&self) -> Platform {
-        if self.current.igb().padded() {
-            Platform::Switch
-        } else {
-            Platform::Pc
-        }
+        Platform::of(&self.current)
     }
 
     /// The size the file will have, measured after each change.

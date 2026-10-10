@@ -32,9 +32,12 @@ This is the format reference for the editor. The code and the other documents of
 | Meta fields (type registry) | 821 | 860: the PC registry has extra rendering and input types |
 | Game data | | Identical: same classes, summary keys, strings, handle names, zones and variables. A fresh PC save matches `saves/initial_game.sav` field for field. |
 | Checksum | None | None |
+| "No reference" value | `0xFFFFFFFE` in the empty references of the save data objects (`CDynamicDifficultySaveData`, `CQuestTrackSaveDataList`, `CGameVariableValueSavedStringList`); `0xFFFFFFFD` in `igObjectDirectoryIGBInfo` | The other way round |
+| Bool upper bytes | Between the two fresh saves, they differ in 84 of the 116 zone sessions and in 21 of the 30 bool variables | |
 
 - **Switch.** An edited file is written back padded to 153,600 bytes, and an edit whose content no longer fits is refused. A 108% save with every scene flag set uses 68,157 bytes before padding (`test_saves/t8_full108_scenes.sav`).
 - **PC.** An edited file is written at its new length. A full 108% edit grows the fresh save from 64,781 to 68,318 bytes. PC1 (same size) and PC2 (grown) both loaded in game.
+- **Converting between platforms.** The game data maps one to one by meaning (zone path, variable name, flag key, summary key), not by object id. The editor copies it into a save of the target platform (a "template") and keeps the template's own container: type registry, ids, "no reference" values, bool upper bytes and padding. Both fresh saves convert to each other byte for byte. A converted save has not been loaded in game yet.
 - **All three games are in one file.** Every save holds 116 zone sessions (`crash1/…`, `crash2/…`, `crash3/…`, `whiterooms/…`) and the variables of the three games. Only Crash 3 is decoded here.
 
 ## 2. Container: Alchemy IGB

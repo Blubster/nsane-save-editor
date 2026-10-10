@@ -416,6 +416,13 @@ impl Crash3Save {
             .filter_map(|name| Some((name.as_str(), self.variable(name)?)))
     }
 
+    /// Every game variable object: `(handle name, object)`, sorted by name.
+    pub(crate) fn variable_objects(&self) -> impl Iterator<Item = (&str, &IgObject)> {
+        self.variables
+            .iter()
+            .filter_map(|(name, &id)| Some((name.as_str(), self.igb.object(id)?)))
+    }
+
     pub fn ability(&self, ability: Ability) -> bool {
         self.variable(ability.variable()).is_some_and(truthy)
     }
@@ -436,6 +443,16 @@ impl Crash3Save {
             .ok()
             .and_then(|t| t.get(&key))
             .is_some_and(|v| v != 0)
+    }
+
+    /// Object id of the flag table.
+    pub(crate) fn flag_table_id(&self) -> u32 {
+        self.flag_table
+    }
+
+    /// Object id of the in-level checkpoint table, if the save has one.
+    pub(crate) fn int_table_id(&self) -> Option<u32> {
+        self.int_table
     }
 
     /// Every key of the flag table with its value, sorted by key.
