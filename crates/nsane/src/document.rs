@@ -8,7 +8,7 @@ use igb::IgbError;
 use thiserror::Error;
 
 use crate::Error;
-use crate::crash3::{Crash3Save, Edit, EditError, Totals, Warning};
+use crate::crash3::{Crash3Save, Diagnostic, Edit, EditError, Totals, Warning, diagnostics};
 use crate::diff::{Change, ReviewRow, diff, summarize};
 
 /// How many steps undo keeps. The oldest are dropped first.
@@ -99,6 +99,8 @@ pub struct Preview {
     pub totals: Totals,
     pub warnings: Vec<Warning>,
     pub size: SizeReport,
+    /// What the diagnostics panel would list after the edits.
+    pub diagnostics: Vec<Diagnostic>,
     /// The resulting save, for checks that need more than the above.
     pub save: Crash3Save,
 }
@@ -115,7 +117,9 @@ struct Step {
 /// An open save with its edit history.
 #[derive(Debug, Clone)]
 pub struct Document {
-    pub file_name: Option<String>,
+    /// Changes only through [`mark_saved`](Self::mark_saved), so the
+    /// diagnostics, which check it, stay current.
+    file_name: Option<String>,
     /// As loaded, for the diff and the review.
     original: Crash3Save,
     current: Crash3Save,
@@ -128,6 +132,8 @@ pub struct Document {
     saved_generation: u64,
     last_generation: u64,
     size: SizeReport,
+    /// Of the current state and file name, refreshed on every change.
+    diagnostics: Vec<Diagnostic>,
 }
 
 /// A copy of `save` with its summary recomputed, as it will be written.
@@ -178,7 +184,7 @@ impl Document {
     pub fn open(bytes: &[u8], file_name: Option<String>) -> Result<Self, OpenError> {
         let save = Crash3Save::parse(bytes)?;
         let size = measure(&save)?;
-        Ok(Self {
+        let mut doc = Self {
             file_name,
             original: save.clone(),
             current: save,
@@ -188,7 +194,29 @@ impl Document {
             saved_generation: 0,
             last_generation: 0,
             size,
-        })
+            diagnostics: Vec::new(),
+        };
+        doc.refresh_diagnostics();
+        Ok(doc)
+    }
+
+    pub fn file_name(&self) -> Option<&str> {
+        self.file_name.as_deref()
+    }
+
+    fn refresh_diagnostics(&mut self) {
+        self.diagnostics = diagnostics(
+            &self.current,
+            self.platform(),
+            self.size,
+            self.file_name.as_deref(),
+        );
+    }
+
+    /// What the diagnostics panel lists for the current state, most severe
+    /// first. Computed on each change, not on each call.
+    pub fn diagnostics(&self) -> &[Diagnostic] {
+        &self.diagnostics
     }
 
     pub fn current(&self) -> &Crash3Save {
@@ -224,6 +252,7 @@ impl Document {
             self.undo.pop_front();
         }
         self.redo.clear();
+        self.refresh_diagnostics();
         Ok(())
     }
 
@@ -238,12 +267,14 @@ impl Document {
         let rows = summarize(&changes, &save);
         let before = summarized(&self.current).unwrap_or_else(|_| self.current.clone());
         let recomputed = recomputed(&before, &save, &changes);
+        let diagnostics = diagnostics(&save, self.platform(), size, self.file_name());
         Ok(Preview {
             rows,
             recomputed,
             totals: save.totals(),
             warnings: save.warnings(),
             size,
+            diagnostics,
             changes,
             save,
         })
@@ -254,6 +285,7 @@ impl Document {
         std::mem::swap(&mut self.current, &mut step.state);
         std::mem::swap(&mut self.generation, &mut step.generation);
         std::mem::swap(&mut self.size, &mut step.size);
+        self.refresh_diagnostics();
     }
 
     pub fn undo(&mut self) -> bool {
@@ -316,6 +348,7 @@ impl Document {
         self.saved_generation = self.generation;
         if new_file_name.is_some() {
             self.file_name = new_file_name;
+            self.refresh_diagnostics();
         }
     }
 

@@ -386,6 +386,11 @@ impl Crash3Save {
         Relic::from_tier(self.int(level, field::RELIC_TIER))
     }
 
+    /// The `relic_tier` field as stored, which [`relic`](Self::relic) reads.
+    pub fn relic_tier(&self, level: LevelId) -> i32 {
+        self.int(level, field::RELIC_TIER)
+    }
+
     /// The time trial leaderboard, best first, without the empty slots.
     pub fn times(&self, level: LevelId) -> Vec<u32> {
         field::TIMES
@@ -413,6 +418,11 @@ impl Crash3Save {
 
     pub fn ability(&self, ability: Ability) -> bool {
         self.variable(ability.variable()).is_some_and(truthy)
+    }
+
+    /// The `Gem_<Color>` variable, which makes the gem's platforms appear.
+    pub fn colored_gem_variable(&self, color: GemColor) -> bool {
+        self.variable(color.variable()).is_some_and(truthy)
     }
 
     // ------------------------------------------------------------- flags

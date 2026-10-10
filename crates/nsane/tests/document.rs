@@ -163,7 +163,7 @@ fn dirty_flag_follows_the_saved_state() {
     assert!(doc.is_dirty());
     doc.mark_saved(None);
     assert!(!doc.is_dirty());
-    assert_eq!(doc.file_name.as_deref(), Some("saves/0019.sav"));
+    assert_eq!(doc.file_name(), Some("saves/0019.sav"));
     doc.undo();
     assert!(doc.is_dirty());
     doc.redo();
@@ -184,7 +184,7 @@ fn dirty_flag_follows_the_saved_state() {
 
     doc.mark_saved(Some("copy.sav".to_owned()));
     assert!(!doc.is_dirty());
-    assert_eq!(doc.file_name.as_deref(), Some("copy.sav"));
+    assert_eq!(doc.file_name(), Some("copy.sav"));
 }
 
 #[test]
