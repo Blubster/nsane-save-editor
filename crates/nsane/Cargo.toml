@@ -1,0 +1,12 @@
+[package]
+name = "nsane"
+description = "Crash Bandicoot N. Sane Trilogy save model and edits"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+igb.workspace = true
+
+[lints]
+workspace = true

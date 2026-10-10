@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Save editor for Crash Bandicoot N. Sane Trilogy</title>
+
+    <link data-trunk rel="rust" data-bin="nsane-save-editor" data-wasm-opt="2" />
+    <base data-trunk-public-url />
+
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="white">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#404040">
+
+    <style>
+        html {
+            touch-action: manipulation;
+        }
+
+        body {
+            background: #909090;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            body {
+                background: #404040;
+            }
+        }
+
+        html,
+        body {
+            overflow: hidden;
+            margin: 0 !important;
+            padding: 0 !important;
+            height: 100%;
+            width: 100%;
+        }
+
+        canvas {
+            margin-right: auto;
+            margin-left: auto;
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .centered {
+            margin-right: auto;
+            margin-left: auto;
+            display: block;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #f0f0f0;
+            font-size: 24px;
+            font-family: Helvetica, sans-serif;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- The id is used in main.rs. -->
+    <canvas id="the_canvas_id"></canvas>
+
+    <!-- Removed by main.rs once the app has started. -->
+    <div class="centered" id="loading_text">
+        <noscript>You need JavaScript to use this page.</noscript>
+        <p style="font-size:16px">Loading…</p>
+    </div>
+</body>
+
+</html>

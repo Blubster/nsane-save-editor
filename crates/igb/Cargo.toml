@@ -1,0 +1,11 @@
+[package]
+name = "igb"
+description = "Reader and writer for the Alchemy IGB container used by Crash Bandicoot N. Sane Trilogy saves"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

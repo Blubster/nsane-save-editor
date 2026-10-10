@@ -1,0 +1,30 @@
+[workspace]
+members = ["crates/igb", "crates/nsane", "crates/gui"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[workspace.dependencies]
+igb = { path = "crates/igb" }
+nsane = { path = "crates/nsane" }
+
+eframe = "=0.36.2"
+egui = "=0.36.2"
+log = "0.4.27"
+
+# native
+env_logger = "0.11.8"
+
+# web
+wasm-bindgen-futures = "0.4.50"
+web-sys = "0.3.70"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[profile.release]
+lto = true
+codegen-units = 1
