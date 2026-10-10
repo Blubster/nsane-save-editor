@@ -163,7 +163,7 @@ The race gems of Area 51? and Rings of Power, and Future Tense's death route gem
 
 - **Abilities are stored only in these variables**, independently of the boss bits. In T3, Death Tornado Spin still worked with N. Tropy undefeated, Double Jump could be turned off, and the Fruit Bazooka and Speed Shoes worked when turned on early.
 - **Scene steps.** A step holds the scenes that play between the previous boss's defeat and this boss's. The game's own saves show where each one is first marked: `C3_Tiny_Intro` in 0007, `C3_Tiny_PreBossFight` and `C3_Tiny_PostBossFight` in 0009, `C3_Hub2_Intro` in 0010, `C3_Dingodile_Intro` in 0015, `C3_Dingodile_PreBossFight` in 0017, `C3_NTropy_Hub3_Intro` in 0018, `C3_PreNGinFight` and `C3_PostNGinFight` in `t4d_after.sav`, `C3_PreFinalBattle` in `t6_after.sav`.
-- The other names in the table, and `C3_AkuAku_Warning` below, come from a 108% Switch save made by another player, which is not included in this repository. Marking every scene as seen stopped all of them from playing (T8).
+- The other names in the table, and `C3_AkuAku_Warning` below, come from a 108% Switch save published by another player ("Crash Bandicoot N Sane Trilogy 100% Save" by championgamer, April 2026), which is not included in this repository. Marking every scene as seen stopped all of them from playing (T8).
 
 ## 4. Zone sessions
 
