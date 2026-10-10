@@ -4,19 +4,27 @@
 //! This crate knows the container only: objects, memory blocks, the string
 //! table and the string-keyed hash tables. It has no knowledge of the games.
 //!
+//! Edits that change the layout are handled here: [`IgbFile::string_index`]
+//! inserts a string and renumbers its references, [`IgbFile::resize_memory`]
+//! keeps the directory in step, and [`IgbFile::hash_table_mut`] sets and
+//! removes keys, growing the table as the game does.
+//!
 //! [`IgbFile::parse`] followed by [`IgbFile::build`] gives back the input byte
 //! for byte. Strings are latin-1 bytes; [`latin1`] converts them at the API
 //! boundary.
 
 mod error;
 mod file;
+mod hashtable;
 mod memory;
 mod object;
 mod reader;
+mod strings;
 mod summary;
 
 pub use error::IgbError;
 pub use file::{ClassDef, DirEntry, IgbFile};
+pub use hashtable::{HashTable, HashTableMut};
 pub use memory::{ElementType, MemoryBlock};
 pub use object::{FieldValue, IgObject};
 pub use summary::{Summary, SummaryEntry, SummaryValue};

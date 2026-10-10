@@ -52,6 +52,15 @@ pub enum IgbError {
     #[error("summary key {0} holds a value of another type")]
     TypeMismatch(String),
 
+    #[error("a string can't contain a NUL byte")]
+    InvalidString,
+
+    #[error("the hash table is full")]
+    HashTableFull,
+
+    #[error("value {0} doesn't fit a bool hash table")]
+    ValueOutOfRange(u32),
+
     #[error("the save data needs {needed} bytes but the file holds {capacity}")]
     DoesNotFit { needed: usize, capacity: usize },
 }

@@ -531,6 +531,85 @@ impl IgbFile {
         self.memory.get_mut(&id)
     }
 
+    /// Changes the element count of memory block `id`. New bytes are `fill`.
+    ///
+    /// Blocks with the same count and type share one directory entry, so the
+    /// block moves to the first entry matching its new values, or to a new entry
+    /// appended at the end. Entries no id uses any more are then dropped.
+    pub fn resize_memory(&mut self, id: u32, count: u32, fill: u8) -> Result<(), IgbError> {
+        let bad_block = IgbError::BadIndex {
+            what: "memory block",
+            index: id as usize,
+        };
+        let block = self.memory.get(&id).ok_or(bad_block.clone())?;
+        let size = (count as usize)
+            .checked_mul(block.element_type.size())
+            .ok_or(IgbError::Malformed("memory block size"))?;
+        let slot = *self.index.get(id as usize).ok_or(bad_block)?;
+        let mut values = self
+            .directory
+            .get(slot as usize)
+            .ok_or(IgbError::BadIndex {
+                what: "directory",
+                index: slot as usize,
+            })?
+            .values
+            .clone();
+        *values
+            .get_mut(1)
+            .ok_or(IgbError::Malformed("memory directory entry"))? = count;
+        let entry = DirEntry {
+            class: MEMORY_DIR_ENTRY.to_owned(),
+            values,
+        };
+
+        let dir_idx = match self.directory.iter().position(|e| *e == entry) {
+            Some(i) => i,
+            None => {
+                self.directory.push(entry);
+                self.directory.len() - 1
+            }
+        };
+        let Ok(dir_idx) = u16::try_from(dir_idx) else {
+            self.directory.pop();
+            return Err(IgbError::Malformed("directory size"));
+        };
+        self.index[id as usize] = dir_idx;
+        if let Some(block) = self.memory.get_mut(&id) {
+            block.data.resize(size, fill);
+            block.count = count;
+        }
+        self.drop_unused_directory_entries();
+        Ok(())
+    }
+
+    /// Removes the directory entries no id points to, keeping the order of the
+    /// others.
+    fn drop_unused_directory_entries(&mut self) {
+        let mut used = vec![false; self.directory.len()];
+        for &i in &self.index {
+            if let Some(u) = used.get_mut(i as usize) {
+                *u = true;
+            }
+        }
+        if used.iter().all(|&u| u) {
+            return;
+        }
+        let mut remap = vec![0u16; used.len()];
+        let mut next = 0;
+        for (i, &u) in used.iter().enumerate() {
+            if u {
+                remap[i] = next;
+                next += 1;
+            }
+        }
+        let mut used = used.into_iter();
+        self.directory.retain(|_| used.next().unwrap_or(true));
+        for slot in &mut self.index {
+            *slot = remap.get(*slot as usize).copied().unwrap_or(*slot);
+        }
+    }
+
     /// The ids held by a list object: field 0 is the count, field 2 the memory
     /// block of object refs. A "no reference" block gives an empty list.
     pub fn deref_list(&self, list: &IgObject) -> Result<Vec<u32>, IgbError> {
