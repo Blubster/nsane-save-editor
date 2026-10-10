@@ -23,9 +23,6 @@ pub const UNLOCKABLE_ROOMS: std::ops::RangeInclusive<u8> = 2..=5;
 /// required, so serializing an edit gives back the JSON it was read from.
 /// [`Edit::from_json`] reads edits with the error codes of [`EditError`]; the
 /// derived `Deserialize` only gives serde errors.
-///
-/// The name `reset_level` (`ResetLevel`) is reserved for an edit that returns
-/// a level to its never-entered state.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum Edit {
@@ -103,6 +100,13 @@ pub enum Edit {
     /// Removes a key from the flag table.
     RawFlagRemove {
         key: String,
+    },
+    /// Returns a level or boss to its state in a new game: no relic, colored
+    /// gem, times or collectibles, and never entered. Abilities and story
+    /// scenes are left alone. Not yet confirmed in game: see
+    /// [`RESET_LEVEL_VERIFIED`](super::RESET_LEVEL_VERIFIED).
+    ResetLevel {
+        level: LevelId,
     },
 }
 
@@ -198,7 +202,7 @@ fn shape(op: &str) -> Option<&'static [(&'static str, Ty)]> {
         }
         "set_relic" => &[("level", Str), ("relic", Relic)],
         "set_times" => &[("level", Str), ("times_cs", Times)],
-        "mark_entered" => &[("level", Str)],
+        "mark_entered" | "reset_level" => &[("level", Str)],
         "set_boss_defeated" => &[("boss", Str), ("on", Bool), ("skip_cutscenes", Bool)],
         "unlock_warp_room" => &[
             ("room", Int),
@@ -319,6 +323,9 @@ impl Edit {
             "mark_entered" => Edit::MarkEntered {
                 level: f.level(true)?,
             },
+            "reset_level" => Edit::ResetLevel {
+                level: f.level(true)?,
+            },
             "set_boss_defeated" => {
                 let key = f.str("boss")?;
                 let boss = LevelId::from_key(key)
@@ -367,7 +374,8 @@ impl Edit {
         })
     }
 
-    /// The level of a level edit (not [`MarkEntered`](Edit::MarkEntered)).
+    /// The level of a level edit (not [`MarkEntered`](Edit::MarkEntered) or
+    /// [`ResetLevel`](Edit::ResetLevel), which also take a boss).
     fn level_op(&self) -> Option<LevelId> {
         match *self {
             Edit::SetCrystal { level, .. }
@@ -474,6 +482,7 @@ impl Edit {
                 format!("{}: times {}", level.name(), times.join(", "))
             }
             Edit::MarkEntered { level } => format!("{}: mark entered", level.name()),
+            Edit::ResetLevel { level } => format!("{}: reset to never played", level.name()),
             Edit::SetBossDefeated {
                 boss,
                 on,
@@ -539,6 +548,7 @@ impl Crash3Save {
                 ref times_cs,
             } => self.set_times(level, times_cs)?,
             Edit::MarkEntered { level } => self.mark_entered(level),
+            Edit::ResetLevel { level } => self.reset_level(level)?,
             Edit::SetBossDefeated {
                 boss,
                 on,

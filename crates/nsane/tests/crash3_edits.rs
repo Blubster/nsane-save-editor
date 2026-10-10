@@ -507,8 +507,12 @@ fn edits_read_from_json_with_the_contract_codes() {
             Err("invalid_value"),
         ),
         (
-            r#"{"op": "reset_level", "level": "toadvillage"}"#,
+            r#"{"op": "reset_level", "level": "toadvillage", "on": true}"#,
             Err("invalid_value"),
+        ),
+        (
+            r#"{"op": "reset_level", "level": "toad village"}"#,
+            Err("unknown_level"),
         ),
         (
             r#"{"op": "mark_entered", "level": "tinytiger"}"#,

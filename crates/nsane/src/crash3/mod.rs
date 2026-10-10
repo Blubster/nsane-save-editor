@@ -2,6 +2,7 @@
 
 mod edit;
 mod model;
+pub mod presets;
 pub mod tables;
 pub mod time;
 
@@ -12,3 +13,7 @@ pub use tables::{
     RELIC_TIMES, Relic, SECRET_ROOM,
 };
 pub use time::{ParseTimeError, format_time, parse_time, relic_for_time};
+
+/// Whether [`Edit::ResetLevel`] was confirmed in game: a reset level must
+/// show as never played. Until then the GUI says it is untested.
+pub const RESET_LEVEL_VERIFIED: bool = false;

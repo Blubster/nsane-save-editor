@@ -702,6 +702,20 @@ impl Crash3Save {
         Ok(())
     }
 
+    /// The session as in a new game. The relic setter removes the
+    /// `<Name>_RelicCounted` flag and the colored gem setter clears the
+    /// `Gem_<Color>` variable; the rest are plain field writes.
+    pub(crate) fn reset_level(&mut self, level: LevelId) -> Result<(), IgbError> {
+        self.set_relic(level, None)?;
+        self.set_colored_gem(level, false);
+        self.set_times(level, &[])?;
+        self.set_int(level, field::COLLECTIBLES, 0);
+        self.set_int(level, field::CRYSTAL, 0);
+        self.set_int(level, field::STATE, -1);
+        self.set_int(level, field::COMPLETIONS, 0);
+        Ok(())
+    }
+
     /// Writes a game variable, keeping its type. Unknown names are ignored:
     /// the ones the editor writes were checked at load.
     fn set_variable(&mut self, name: &str, value: i32) {
