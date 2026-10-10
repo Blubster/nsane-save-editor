@@ -4,11 +4,11 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use igb::{FieldValue, IgObject, IgbFile, SummaryValue, latin1};
+use igb::{FieldValue, IgObject, IgbError, IgbFile, SummaryValue, latin1};
 
 use super::tables::{
-    ABILITIES, Ability, BONUS_GEM_KEY, BOSSES, CORTEX, GemColor, Kind, LEVELS, LevelId,
-    PROGRESSION, Relic, bit, cutscene_key, field,
+    ABILITIES, Ability, BONUS_GEM_KEY, BOSSES, CORTEX, CUTSCENES, EMPTY_INITIALS, GemColor, Kind,
+    LEVELS, LevelId, PROGRESSION, Relic, bit, cutscene_key, field, relic_counted_key,
 };
 use crate::Error;
 
@@ -139,6 +139,21 @@ impl fmt::Display for Warning {
 
 fn not_a_save(reason: impl Into<String>) -> Error {
     Error::NotASave(reason.into())
+}
+
+/// Replaces a one-word value, keeping its type (and a bool's padding bytes).
+fn set_value(field: &mut FieldValue, value: i32) {
+    *field = match *field {
+        FieldValue::Int(_) => FieldValue::Int(value),
+        FieldValue::Enum(_) => FieldValue::Enum(value),
+        FieldValue::UInt(_) => FieldValue::UInt(value as u32),
+        FieldValue::Bool { padding, .. } => FieldValue::Bool {
+            value: value as u8,
+            padding,
+        },
+        FieldValue::Float(_) => FieldValue::Float((value as f32).to_bits()),
+        other => other,
+    };
 }
 
 /// The truth value of a game variable. Only the value byte of a bool counts.
@@ -539,5 +554,204 @@ impl Crash3Save {
     pub fn bonus_gem_due(&self) -> bool {
         let t = self.totals();
         !self.bonus_gem() && t.gold + t.platinum >= 30 && t.percent() >= 107
+    }
+
+    // ------------------------------------------------------------- edits
+    //
+    // What each edit writes is listed in docs/FORMAT.md §8. The setters don't
+    // check that an edit makes sense for the level: `apply` does. Their order
+    // of writes matters: inserting a flag or a string can move other keys and
+    // strings, and the outputs must match the saves tested in game byte for
+    // byte.
+
+    fn set_int(&mut self, level: LevelId, i: usize, value: i32) {
+        let id = self.level_sessions[level.index()];
+        if let Some(f) = self.igb.object_mut(id).and_then(|s| s.field_mut(i)) {
+            set_value(f, value);
+        }
+    }
+
+    fn set_str(&mut self, level: LevelId, i: usize, string: u32) {
+        let id = self.level_sessions[level.index()];
+        if let Some(f) = self.igb.object_mut(id).and_then(|s| s.field_mut(i)) {
+            *f = FieldValue::Str(string);
+        }
+    }
+
+    /// What the game writes after a first visit: `state` and `completions`
+    /// raised to 1, never lowered.
+    pub(crate) fn mark_entered(&mut self, level: LevelId) {
+        if self.int(level, field::STATE) < 1 {
+            self.set_int(level, field::STATE, 1);
+        }
+        if self.completions(level) < 1 {
+            self.set_int(level, field::COMPLETIONS, 1);
+        }
+    }
+
+    /// Turning a collectible on also marks the level entered; turning it off
+    /// leaves the visit alone.
+    fn set_bits(&mut self, level: LevelId, bits: u32, on: bool) {
+        let flags = self.flags(level);
+        let flags = if on { flags | bits } else { flags & !bits };
+        self.set_int(level, field::COLLECTIBLES, flags as i32);
+        if on {
+            self.mark_entered(level);
+        }
+    }
+
+    /// The bit and the `crystal` field, which the game keeps equal.
+    pub(crate) fn set_crystal(&mut self, level: LevelId, on: bool) {
+        self.set_bits(level, bit::CRYSTAL, on);
+        self.set_int(level, field::CRYSTAL, i32::from(on));
+        if on {
+            self.mark_entered(level);
+        }
+    }
+
+    pub(crate) fn set_gem(&mut self, level: LevelId, on: bool) {
+        self.set_bits(level, bit::GEM_CLEAR, on);
+    }
+
+    pub(crate) fn set_second_gem(&mut self, level: LevelId, on: bool) {
+        self.set_bits(level, bit::GEM_SECOND, on);
+    }
+
+    /// The zone bit and the `Gem_<Color>` variable that makes the gem's
+    /// platforms appear. Each color is found in one level only, so turning it
+    /// off can clear the variable. Does nothing for a level without one.
+    pub(crate) fn set_colored_gem(&mut self, level: LevelId, on: bool) {
+        let Some(color) = level.level().colored_gem else {
+            return;
+        };
+        self.set_bits(level, color.bit(), on);
+        self.set_variable(color.variable(), i32::from(on));
+    }
+
+    pub(crate) fn set_boss_defeated(&mut self, level: LevelId, on: bool) {
+        self.set_bits(level, bit::BOSS_DEFEATED, on);
+    }
+
+    /// The tier, exactly one relic bit, and the `<Name>_RelicCounted` flag.
+    /// Removing the relic doesn't touch the visit.
+    pub(crate) fn set_relic(
+        &mut self,
+        level: LevelId,
+        relic: Option<Relic>,
+    ) -> Result<(), IgbError> {
+        let flags = self.flags(level) & !bit::RELICS;
+        self.set_int(level, field::COLLECTIBLES, flags as i32);
+        self.set_int(level, field::RELIC_TIER, relic.map_or(0, Relic::tier));
+        if let Some(relic) = relic {
+            self.set_bits(level, relic.bit(), true);
+        }
+        self.set_flag(&relic_counted_key(level.level()), relic.is_some())
+    }
+
+    /// Up to 3 times, best first, with `""` initials per time and `"---"` per
+    /// empty slot. Both initials are looked up (and inserted when missing)
+    /// even for an empty list.
+    pub(crate) fn set_times(&mut self, level: LevelId, times: &[u32]) -> Result<(), IgbError> {
+        let mut times: Vec<u32> = times.iter().copied().filter(|&t| t > 0).collect();
+        times.sort_unstable();
+        times.truncate(field::TIMES.len());
+        let player = self.igb.string_index(b"")?;
+        let empty = self.igb.string_index(EMPTY_INITIALS.as_bytes())?;
+        for (i, (&time_field, &initials_field)) in
+            field::TIMES.iter().zip(&field::INITIALS).enumerate()
+        {
+            let time = times.get(i).copied();
+            self.set_int(level, time_field, time.unwrap_or(0) as i32);
+            self.set_str(
+                level,
+                initials_field,
+                if time.is_some() { player } else { empty },
+            );
+        }
+        if !times.is_empty() {
+            self.mark_entered(level);
+        }
+        Ok(())
+    }
+
+    /// Writes a game variable, keeping its type. Unknown names are ignored:
+    /// the ones the editor writes were checked at load.
+    fn set_variable(&mut self, name: &str, value: i32) {
+        let Some(&id) = self.variables.get(name) else {
+            return;
+        };
+        if let Some(f) = self.igb.object_mut(id).and_then(|o| o.field_mut(0)) {
+            set_value(f, value);
+        }
+    }
+
+    pub(crate) fn set_ability(&mut self, ability: Ability, on: bool) {
+        self.set_variable(ability.variable(), i32::from(on));
+    }
+
+    /// Sets a key of the flag table to 1, or removes it.
+    pub(crate) fn set_flag(&mut self, key: &str, on: bool) -> Result<(), IgbError> {
+        let key = latin1::encode(key).ok_or(IgbError::InvalidString)?;
+        let mut table = self.igb.hash_table_mut(self.flag_table)?;
+        if on {
+            table.set(&key, 1)
+        } else {
+            table.remove(&key).map(drop)
+        }
+    }
+
+    pub(crate) fn set_cutscene(&mut self, name: &str, seen: bool) -> Result<(), IgbError> {
+        self.set_flag(&cutscene_key(name), seen)
+    }
+
+    pub(crate) fn set_bonus_gem(&mut self, on: bool) -> Result<(), IgbError> {
+        self.set_flag(BONUS_GEM_KEY, on)
+    }
+
+    pub(crate) fn set_lives(&mut self, count: u8) -> Result<(), IgbError> {
+        self.igb
+            .summary_mut()
+            .set("life_count", SummaryValue::Int(i32::from(count)))
+    }
+
+    /// Marks the scenes of the `start` step and of `boss`'s step as seen, in
+    /// table order, skipping the ones already seen.
+    pub(crate) fn skip_story_cutscenes(&mut self, boss: LevelId) -> Result<(), IgbError> {
+        let steps = CUTSCENES
+            .iter()
+            .filter(|s| s.step == "start" || s.boss() == Some(boss));
+        for &name in steps.flat_map(|s| s.scenes) {
+            if !self.cutscene_seen(name) {
+                self.set_cutscene(name, true)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Opens warp room `room` (2–5) by defeating the bosses of the rooms
+    /// before it. With `skip_cutscenes`, their story scenes are marked seen,
+    /// also for bosses already defeated; with `with_abilities`, the abilities
+    /// those bosses grant are turned on.
+    pub(crate) fn unlock_warp_room(
+        &mut self,
+        room: u8,
+        with_abilities: bool,
+        skip_cutscenes: bool,
+    ) -> Result<(), IgbError> {
+        let n = usize::from(room.saturating_sub(1)).min(BOSSES.len());
+        for &boss in &BOSSES[..n] {
+            if !self.boss_defeated(boss) {
+                self.set_boss_defeated(boss, true);
+            }
+            if skip_cutscenes {
+                self.skip_story_cutscenes(boss)?;
+            }
+        }
+        if with_abilities {
+            for &ability in &ABILITIES[..n] {
+                self.set_ability(ability, true);
+            }
+        }
+        Ok(())
     }
 }

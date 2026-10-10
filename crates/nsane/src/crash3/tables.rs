@@ -644,3 +644,26 @@ pub const MAX_GEMS: u32 = MAX_CLEAR_GEMS + MAX_SECOND_GEMS + MAX_COLORED_GEMS + 
 pub const MAX_RELICS: u32 = 31;
 pub const MAX_BOSSES: u32 = 5;
 pub const MAX_PERCENT: u32 = MAX_CRYSTALS + MAX_GEMS + MAX_RELICS + MAX_BOSSES;
+
+/// Levels, abilities and relics are written in edit ops as their keys.
+macro_rules! serde_as_key {
+    ($ty:ty, $what:literal) => {
+        impl serde::Serialize for $ty {
+            fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+                s.serialize_str(self.key())
+            }
+        }
+
+        impl<'de> serde::Deserialize<'de> for $ty {
+            fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+                let key = <String as serde::Deserialize>::deserialize(d)?;
+                <$ty>::from_key(&key)
+                    .ok_or_else(|| serde::de::Error::custom(format!("unknown {} {key:?}", $what)))
+            }
+        }
+    };
+}
+
+serde_as_key!(LevelId, "level");
+serde_as_key!(Ability, "ability");
+serde_as_key!(Relic, "relic");
