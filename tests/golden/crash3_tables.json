@@ -1,0 +1,139 @@
+{
+  "levels": [
+    {"number": 1, "key": "toadvillage", "name": "Toad Village", "zone": "crash3/l301_toadvillage/l301_toadvillage", "warp_room": 1, "kind": "level", "second_gem": false, "colored_gem": null, "has_crystal": true},
+    {"number": 2, "key": "underpressure", "name": "Under Pressure", "zone": "crash3/l302_underpressure/l302_underpressure", "warp_room": 1, "kind": "level", "second_gem": false, "colored_gem": null, "has_crystal": true},
+    {"number": 3, "key": "orientexpress", "name": "Orient Express", "zone": "crash3/l303_orientexpress/l303_orientexpress", "warp_room": 1, "kind": "level", "second_gem": false, "colored_gem": null, "has_crystal": true},
+    {"number": 4, "key": "boneyard", "name": "Bone Yard", "zone": "crash3/l304_boneyard/l304_boneyard", "warp_room": 1, "kind": "level", "second_gem": true, "colored_gem": null, "has_crystal": true},
+    {"number": 5, "key": "makinwaves", "name": "Makin' Waves", "zone": "crash3/l305_makinwaves/l305_makinwaves", "warp_room": 1, "kind": "level", "second_gem": false, "colored_gem": null, "has_crystal": true},
+    {"number": null, "key": "tinytiger", "name": "Tiny Tiger", "zone": "crash3/bosses/b301_tinytiger/b301_tinytiger", "warp_room": 1, "kind": "boss", "second_gem": false, "colored_gem": null, "has_crystal": false},
+    {"number": 6, "key": "geewiz", "name": "Gee Wiz", "zone": "crash3/l306_geewiz/l306_geewiz", "warp_room": 2, "kind": "level", "second_gem": false, "colored_gem": null, "has_crystal": true},
+    {"number": 7, "key": "hangemhigh", "name": "Hang'em High", "zone": "crash3/l307_hangemhigh/l307_hangemhigh", "warp_room": 2, "kind": "level", "second_gem": false, "colored_gem": "yellow", "has_crystal": true},
+    {"number": 8, "key": "hogride", "name": "Hog Ride", "zone": "crash3/l308_hogride/l308_hogride", "warp_room": 2, "kind": "level", "second_gem": false, "colored_gem": null, "has_crystal": true},
+    {"number": 9, "key": "tombtime", "name": "Tomb Time", "zone": "crash3/l309_tombtime/l309_tombtime", "warp_room": 2, "kind": "level", "second_gem": true, "colored_gem": null, "has_crystal": true},
+    {"number": 10, "key": "midnightrun", "name": "Midnight Run", "zone": "crash3/l310_midnightrun/l310_midnightrun", "warp_room": 2, "kind": "level", "second_gem": false, "colored_gem": null, "has_crystal": true},
+    {"number": null, "key": "dingodile", "name": "Dingodile", "zone": "crash3/bosses/b302_dingodile/b302_dingodile", "warp_room": 2, "kind": "boss", "second_gem": false, "colored_gem": null, "has_crystal": false},
+    {"number": 11, "key": "dinomight", "name": "Dino Might!", "zone": "crash3/l311_dinomight/l311_dinomight", "warp_room": 3, "kind": "level", "second_gem": true, "colored_gem": null, "has_crystal": true},
+    {"number": 12, "key": "deeptrouble", "name": "Deep Trouble", "zone": "crash3/l312_deeptrouble/l312_deeptrouble", "warp_room": 3, "kind": "level", "second_gem": false, "colored_gem": "red", "has_crystal": true},
+    {"number": 13, "key": "hightime", "name": "High Time", "zone": "crash3/l313_hightime/l313_hightime", "warp_room": 3, "kind": "level", "second_gem": false, "colored_gem": "purple", "has_crystal": true},
+    {"number": 14, "key": "roadcrash", "name": "Road Crash", "zone": "crash3/l314_roadcrash/l314_roadcrash", "warp_room": 3, "kind": "level", "second_gem": false, "colored_gem": null, "has_crystal": true},
+    {"number": 15, "key": "doubleheader", "name": "Double Header", "zone": "crash3/l315_doubleheader/l315_doubleheader", "warp_room": 3, "kind": "level", "second_gem": false, "colored_gem": null, "has_crystal": true},
+    {"number": null, "key": "ntropy", "name": "Dr. N. Tropy", "zone": "crash3/bosses/b303_ntropy/b303_ntropy", "warp_room": 3, "kind": "boss", "second_gem": false, "colored_gem": null, "has_crystal": false},
+    {"number": 16, "key": "sphynxinator", "name": "Sphynxinator", "zone": "crash3/l316_sphynxinator/l316_sphynxinator", "warp_room": 4, "kind": "level", "second_gem": true, "colored_gem": null, "has_crystal": true},
+    {"number": 17, "key": "byebyeblimps", "name": "Bye Bye Blimps", "zone": "crash3/l317_byebyeblimps/l317_byebyeblimps", "warp_room": 4, "kind": "level", "second_gem": false, "colored_gem": null, "has_crystal": true},
+    {"number": 18, "key": "tellnotales", "name": "Tell No Tales", "zone": "crash3/l318_tellnotales/l318_tellnotales", "warp_room": 4, "kind": "level", "second_gem": false, "colored_gem": null, "has_crystal": true},
+    {"number": 19, "key": "futurefrenzy", "name": "Future Frenzy", "zone": "crash3/l319_futurefrenzy/l319_futurefrenzy", "warp_room": 4, "kind": "level", "second_gem": true, "colored_gem": null, "has_crystal": true},
+    {"number": 20, "key": "tombwader", "name": "Tomb Wader", "zone": "crash3/l320_tombwader/l320_tombwader", "warp_room": 4, "kind": "level", "second_gem": false, "colored_gem": "blue", "has_crystal": true},
+    {"number": null, "key": "ngin", "name": "N. Gin", "zone": "crash3/bosses/b304_ngin/b304_ngin", "warp_room": 4, "kind": "boss", "second_gem": false, "colored_gem": null, "has_crystal": false},
+    {"number": 21, "key": "gonetomorrow", "name": "Gone Tomorrow", "zone": "crash3/l321_gonetomorrow/l321_gonetomorrow", "warp_room": 5, "kind": "level", "second_gem": true, "colored_gem": null, "has_crystal": true},
+    {"number": 22, "key": "orangeasphalt", "name": "Orange Asphalt", "zone": "crash3/l322_orangeasphalt/l322_orangeasphalt", "warp_room": 5, "kind": "level", "second_gem": false, "colored_gem": null, "has_crystal": true},
+    {"number": 23, "key": "flamingpassion", "name": "Flaming Passion", "zone": "crash3/l323_flamingpassion/l323_flamingpassion", "warp_room": 5, "kind": "level", "second_gem": false, "colored_gem": "green", "has_crystal": true},
+    {"number": 24, "key": "madbombers", "name": "Mad Bombers", "zone": "crash3/l324_madbombers/l324_madbombers", "warp_room": 5, "kind": "level", "second_gem": false, "colored_gem": null, "has_crystal": true},
+    {"number": 25, "key": "buglite", "name": "Bug Lite", "zone": "crash3/l325_buglite/l325_buglite", "warp_room": 5, "kind": "level", "second_gem": true, "colored_gem": null, "has_crystal": true},
+    {"number": null, "key": "neocortex", "name": "Dr. Neo Cortex", "zone": "crash3/bosses/b305_neocortex/b305_neocortex", "warp_room": 5, "kind": "boss", "second_gem": false, "colored_gem": null, "has_crystal": false},
+    {"number": 26, "key": "skicrazed", "name": "Ski Crazed", "zone": "crash3/l326_skicrazed/l326_skicrazed", "warp_room": 6, "kind": "level", "second_gem": false, "colored_gem": null, "has_crystal": false},
+    {"number": 28, "key": "area51", "name": "Area 51?", "zone": "crash3/l328_area51/l328_area51", "warp_room": 6, "kind": "level", "second_gem": true, "colored_gem": null, "has_crystal": false},
+    {"number": 30, "key": "ringsofpower", "name": "Rings of Power", "zone": "crash3/l330_ringsofpower/l330_ringsofpower", "warp_room": 6, "kind": "level", "second_gem": true, "colored_gem": null, "has_crystal": false},
+    {"number": null, "key": "hotcoco", "name": "Hot Coco", "zone": "crash3/l331_hotcoco/l331_hotcoco", "warp_room": 6, "kind": "secret", "second_gem": false, "colored_gem": null, "has_crystal": false},
+    {"number": null, "key": "eggipusrex", "name": "Eggipus Rex", "zone": "crash3/l332_eggipusrex/l332_eggipusrex", "warp_room": 6, "kind": "secret", "second_gem": false, "colored_gem": null, "has_crystal": false},
+    {"number": null, "key": "futuretense", "name": "Future Tense", "zone": "crash3/l333_futuretense/l333_futuretense", "warp_room": 6, "kind": "secret", "second_gem": true, "colored_gem": null, "has_crystal": false}
+  ],
+  "bosses": ["tinytiger", "dingodile", "ntropy", "ngin", "neocortex"],
+  "progression": ["toadvillage", "underpressure", "orientexpress", "boneyard", "makinwaves", "tinytiger", "geewiz", "hangemhigh", "hogride", "tombtime", "midnightrun", "dingodile", "dinomight", "deeptrouble", "hightime", "roadcrash", "doubleheader", "ntropy", "sphynxinator", "byebyeblimps", "tellnotales", "futurefrenzy", "tombwader", "ngin", "gonetomorrow", "orangeasphalt", "flamingpassion", "madbombers", "buglite", "neocortex"],
+  "secret_room": [
+    {"number": 26, "relics": 5, "level": "skicrazed"},
+    {"number": 27, "relics": 10, "level": "hangemhigh"},
+    {"number": 28, "relics": 15, "level": "area51"},
+    {"number": 29, "relics": 20, "level": "futurefrenzy"},
+    {"number": 30, "relics": 25, "level": "ringsofpower"}
+  ],
+  "relic_times": [
+    {"level": "toadvillage", "platinum": 4403, "gold": 5750, "sapphire": 6300},
+    {"level": "underpressure", "platinum": 6350, "gold": 7090, "sapphire": 9900},
+    {"level": "orientexpress", "platinum": 1810, "gold": 2780, "sapphire": 4100},
+    {"level": "boneyard", "platinum": 8100, "gold": 10020, "sapphire": 10500},
+    {"level": "makinwaves", "platinum": 5623, "gold": 6323, "sapphire": 7100},
+    {"level": "geewiz", "platinum": 6590, "gold": 8273, "sapphire": 9500},
+    {"level": "hangemhigh", "platinum": 4380, "gold": 5263, "sapphire": 8400},
+    {"level": "hogride", "platinum": 3806, "gold": 4443, "sapphire": 4800},
+    {"level": "tombtime", "platinum": 5390, "gold": 7000, "sapphire": 10200},
+    {"level": "midnightrun", "platinum": 1820, "gold": 3823, "sapphire": 5100},
+    {"level": "dinomight", "platinum": 6300, "gold": 8576, "sapphire": 9400},
+    {"level": "deeptrouble", "platinum": 6833, "gold": 7513, "sapphire": 9700},
+    {"level": "hightime", "platinum": 5693, "gold": 6410, "sapphire": 13200},
+    {"level": "roadcrash", "platinum": 8310, "gold": 8670, "sapphire": 9100},
+    {"level": "doubleheader", "platinum": 5940, "gold": 8113, "sapphire": 8700},
+    {"level": "sphynxinator", "platinum": 5670, "gold": 8263, "sapphire": 10200},
+    {"level": "byebyeblimps", "platinum": 3150, "gold": 3840, "sapphire": 4900},
+    {"level": "tellnotales", "platinum": 7523, "gold": 9563, "sapphire": 13200},
+    {"level": "futurefrenzy", "platinum": 7963, "gold": 9400, "sapphire": 12100},
+    {"level": "tombwader", "platinum": 8400, "gold": 10503, "sapphire": 16400},
+    {"level": "gonetomorrow", "platinum": 6210, "gold": 8560, "sapphire": 12500},
+    {"level": "orangeasphalt", "platinum": 8380, "gold": 9330, "sapphire": 9800},
+    {"level": "flamingpassion", "platinum": 5940, "gold": 7310, "sapphire": 10300},
+    {"level": "madbombers", "platinum": 5813, "gold": 7523, "sapphire": 13800},
+    {"level": "buglite", "platinum": 7490, "gold": 9486, "sapphire": 10900},
+    {"level": "skicrazed", "platinum": 3630, "gold": 5350, "sapphire": 7900},
+    {"level": "area51", "platinum": 11250, "gold": 11780, "sapphire": 12100},
+    {"level": "ringsofpower", "platinum": 6173, "gold": 7146, "sapphire": 9000},
+    {"level": "hotcoco", "platinum": 1996, "gold": 3010, "sapphire": 6000},
+    {"level": "eggipusrex", "platinum": 4783, "gold": 5303, "sapphire": 5800},
+    {"level": "futuretense", "platinum": 5217, "gold": 7543, "sapphire": 12152}
+  ],
+  "abilities": [
+    {"key": "bodyslam", "name": "Super Charged Body Slam", "variable": "Upgrade_SuperChargedBodySlam"},
+    {"key": "doublejump", "name": "Double Jump", "variable": "Upgrade_DoubleJump"},
+    {"key": "tornadospin", "name": "Death Tornado Spin", "variable": "Upgrade_DeathTornadoSpin"},
+    {"key": "bazooka", "name": "Fruit Bazooka", "variable": "Upgrade_FruitBazooka"},
+    {"key": "speedshoes", "name": "Speed Shoes", "variable": "Upgrade_SpeedShoes"}
+  ],
+  "cutscenes": [
+    {
+      "step": "start",
+      "scenes": [
+        {"name": "C3_Cortex_Taunt_1", "key": "l300_hub_talkingheadcutscenes.C3_Cortex_Taunt_1 (archetype l300_hub_talkingheadcutscenes.C3_Cortex_Taunt_1_entityData)"},
+        {"name": "C3_AkuAku_TimeTrialInfo", "key": "l300_hub_talkingheadcutscenes.C3_AkuAku_TimeTrialInfo (archetype l300_hub_talkingheadcutscenes.C3_AkuAku_TimeTrialInfo_entityData)"},
+        {"name": "C3_AkuAku_Warning", "key": "l300_hub_talkingheadcutscenes.C3_AkuAku_Warning (archetype l300_hub_talkingheadcutscenes.C3_AkuAku_Warning_entityData)"}
+      ]
+    },
+    {
+      "step": "tinytiger",
+      "scenes": [
+        {"name": "C3_Tiny_Intro", "key": "l300_hub_talkingheadcutscenes.C3_Tiny_Intro (archetype l300_hub_talkingheadcutscenes.C3_Tiny_Intro_entityData)"},
+        {"name": "C3_Tiny_PreBossFight", "key": "l300_hub_talkingheadcutscenes.C3_Tiny_PreBossFight (archetype l300_hub_talkingheadcutscenes.C3_Tiny_PreBossFight_entityData)"},
+        {"name": "C3_Tiny_PostBossFight", "key": "l300_hub_talkingheadcutscenes.C3_Tiny_PostBossFight (archetype l300_hub_talkingheadcutscenes.C3_Tiny_PostBossFight_entityData)"}
+      ]
+    },
+    {
+      "step": "dingodile",
+      "scenes": [
+        {"name": "C3_Hub2_Intro", "key": "l300_hub_talkingheadcutscenes.C3_Hub2_Intro (archetype l300_hub_talkingheadcutscenes.C3_Hub2_Intro_entityData)"},
+        {"name": "C3_Dingodile_Intro", "key": "l300_hub_talkingheadcutscenes.C3_Dingodile_Intro (archetype l300_hub_talkingheadcutscenes.C3_Dingodile_Intro_entityData)"},
+        {"name": "C3_Dingodile_PreBossFight", "key": "l300_hub_talkingheadcutscenes.C3_Dingodile_PreBossFight (archetype l300_hub_talkingheadcutscenes.C3_Dingodile_PreBossFight_entityData)"}
+      ]
+    },
+    {
+      "step": "ntropy",
+      "scenes": [
+        {"name": "C3_NTropy_Hub3_Intro", "key": "l300_hub_talkingheadcutscenes.C3_NTropy_Hub3_Intro (archetype l300_hub_talkingheadcutscenes.C3_NTropy_Hub3_Intro_entityData)"},
+        {"name": "C3_NTropy_PreFight", "key": "l300_hub_talkingheadcutscenes.C3_NTropy_PreFight (archetype l300_hub_talkingheadcutscenes.C3_NTropy_PreFight_entityData)"},
+        {"name": "C3_NTropy_Taunt", "key": "l300_hub_talkingheadcutscenes.C3_NTropy_Taunt (archetype l300_hub_talkingheadcutscenes.C3_NTropy_Taunt_entityData)"},
+        {"name": "C3_Cortex_Post_NTropy_Fight", "key": "l300_hub_talkingheadcutscenes.C3_Cortex_Post_NTropy_Fight (archetype l300_hub_talkingheadcutscenes.C3_Cortex_Post_NTropy_Fight_entityData)"}
+      ]
+    },
+    {
+      "step": "ngin",
+      "scenes": [
+        {"name": "C3_NGin_Intro", "key": "l300_hub_talkingheadcutscenes.C3_NGin_Intro (archetype l300_hub_talkingheadcutscenes.C3_NGin_Intro_entityData)"},
+        {"name": "C3_PreNGinFight", "key": "l300_hub_talkingheadcutscenes.C3_PreNGinFight (archetype l300_hub_talkingheadcutscenes.C3_PreNGinFight_entityData)"},
+        {"name": "C3_PostNGinFight", "key": "l300_hub_talkingheadcutscenes.C3_PostNGinFight (archetype l300_hub_talkingheadcutscenes.C3_PostNGinFight_entityData)"}
+      ]
+    },
+    {
+      "step": "neocortex",
+      "scenes": [
+        {"name": "C3_Cortex_Taunt_2", "key": "l300_hub_talkingheadcutscenes.C3_Cortex_Taunt_2 (archetype l300_hub_talkingheadcutscenes.C3_Cortex_Taunt_2_entityData)"},
+        {"name": "C3_PreFinalBattle", "key": "l300_hub_talkingheadcutscenes.C3_PreFinalBattle (archetype l300_hub_talkingheadcutscenes.C3_PreFinalBattle_entityData)"}
+      ]
+    }
+  ]
+}
