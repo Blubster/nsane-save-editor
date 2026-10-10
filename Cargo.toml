@@ -11,6 +11,8 @@ license = "MIT"
 igb = { path = "crates/igb" }
 nsane = { path = "crates/nsane" }
 
+thiserror = "2.0.21"
+
 eframe = "=0.36.2"
 egui = "=0.36.2"
 log = "0.4.27"
@@ -24,6 +26,11 @@ web-sys = "0.3.70"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
+
+# The container tests parse every save hundreds of times; keep them fast in
+# debug builds (overflow checks stay on).
+[profile.dev.package.igb]
+opt-level = 2
 
 [profile.release]
 lto = true
