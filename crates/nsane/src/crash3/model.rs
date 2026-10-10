@@ -55,6 +55,8 @@ pub struct Crash3Save {
     variables: BTreeMap<String, u32>,
     /// Object id of the one-shot flag table.
     flag_table: u32,
+    /// Object id of the in-level checkpoint table, which the editor only reads.
+    int_table: Option<u32>,
 }
 
 /// Progress totals, counted from the sessions and flags (not the stored summary).
@@ -165,6 +167,16 @@ fn truthy(value: FieldValue) -> bool {
     }
 }
 
+/// The keys and values of a hash table. Both tables were read once at load,
+/// and edits keep them readable, so this doesn't fail in practice.
+fn table_entries(igb: &IgbFile, id: Option<u32>) -> BTreeMap<String, u32> {
+    id.and_then(|id| igb.hash_table(id).ok()?.items().ok())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(key, value)| (latin1::decode(&key), value))
+        .collect()
+}
+
 impl Crash3Save {
     pub fn parse(data: &[u8]) -> Result<Self, Error> {
         Self::from_igb(IgbFile::parse(data)?)
@@ -244,7 +256,11 @@ impl Crash3Save {
             .next()
             .ok_or_else(|| not_a_save("no flag table"))?
             .id;
-        igb.hash_table(flag_table)?;
+        igb.hash_table(flag_table)?.items()?;
+        let int_table = igb.objects_of("igStringIntHashTable").next().map(|t| t.id);
+        if let Some(id) = int_table {
+            igb.hash_table(id)?.items()?;
+        }
 
         let summary = igb.summary();
         for key in INT_KEYS {
@@ -262,6 +278,7 @@ impl Crash3Save {
             level_sessions,
             variables,
             flag_table,
+            int_table,
         })
     }
 
@@ -409,6 +426,17 @@ impl Crash3Save {
             .ok()
             .and_then(|t| t.get(&key))
             .is_some_and(|v| v != 0)
+    }
+
+    /// Every key of the flag table with its value, sorted by key.
+    pub fn flag_entries(&self) -> BTreeMap<String, u32> {
+        table_entries(&self.igb, Some(self.flag_table))
+    }
+
+    /// Every key of the in-level checkpoint table with its value, sorted by
+    /// key. Empty if the save has no such table.
+    pub fn int_flag_entries(&self) -> BTreeMap<String, u32> {
+        table_entries(&self.igb, self.int_table)
     }
 
     pub fn cutscene_seen(&self, name: &str) -> bool {

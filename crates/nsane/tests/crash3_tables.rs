@@ -167,3 +167,23 @@ fn table_invariants() {
     }
     assert_eq!(Relic::from_tier(0), None);
 }
+
+#[test]
+fn flag_keys_read_back() {
+    use nsane::crash3::tables::{cutscene_name, relic_counted_level};
+    for step in CUTSCENES {
+        for &name in step.scenes {
+            assert_eq!(cutscene_name(&cutscene_key(name)), Some(name));
+        }
+    }
+    assert_eq!(cutscene_name(&cutscene_key("C3_Other")), Some("C3_Other"));
+    assert_eq!(cutscene_name("C3_NGin_Intro"), None);
+    assert_eq!(cutscene_name("LastGemRewarded"), None);
+    for level in LevelId::all() {
+        assert_eq!(
+            relic_counted_level(&relic_counted_key(level.level())),
+            Some(level)
+        );
+    }
+    assert_eq!(relic_counted_level("Nowhere_RelicCounted"), None);
+}

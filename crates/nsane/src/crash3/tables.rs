@@ -590,6 +590,25 @@ pub mod field {
     pub const CRYSTAL: usize = 12;
     /// The bits of [`bit`](super::bit).
     pub const COLLECTIBLES: usize = 13;
+
+    /// Our name of each field, as `docs/FORMAT.md` lists them.
+    pub const NAMES: [&str; 15] = [
+        "unknown_0",
+        "unknown_1",
+        "state",
+        "completions",
+        "unknown_4",
+        "time_1",
+        "time_2",
+        "time_3",
+        "initials_1",
+        "initials_2",
+        "initials_3",
+        "relic_tier",
+        "crystal",
+        "collectibles",
+        "unknown_14",
+    ];
 }
 
 /// Bits of the `collectibles` session field (§4, "Collectible bits").
@@ -629,9 +648,25 @@ pub fn cutscene_key(name: &str) -> String {
     format!("{CUTSCENE_PREFIX}{name} (archetype {CUTSCENE_PREFIX}{name}_entityData)")
 }
 
+/// The scene name of a flag table key written by [`cutscene_key`], for any
+/// scene name, listed in [`CUTSCENES`] or not.
+pub fn cutscene_name(key: &str) -> Option<&str> {
+    let name = key
+        .strip_prefix(CUTSCENE_PREFIX)?
+        .split_once(" (archetype ")?
+        .0;
+    (cutscene_key(name) == key).then_some(name)
+}
+
 /// The flag table key present while a level holds a relic.
 pub fn relic_counted_key(level: &Level) -> String {
     format!("{}_RelicCounted", level.name)
+}
+
+/// The level of a key written by [`relic_counted_key`].
+pub fn relic_counted_level(key: &str) -> Option<LevelId> {
+    let name = key.strip_suffix("_RelicCounted")?;
+    LevelId::all().find(|l| l.name() == name)
 }
 
 /// Maxima of the totals (§6): 25 + 47 + 31 + 5 = 108%.
