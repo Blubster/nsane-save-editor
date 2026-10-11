@@ -48,7 +48,7 @@ fn load(rel: &str) -> IgbFile {
 #[test]
 fn every_save_round_trips_byte_for_byte() {
     let saves = all_saves();
-    assert_eq!(saves.len(), 69, "expected 69 save files");
+    assert_eq!(saves.len(), 76, "expected 76 save files");
     let mut failures = Vec::new();
     for (name, data) in &saves {
         match IgbFile::parse(data).and_then(|f| f.build()) {

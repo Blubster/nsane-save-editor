@@ -6,7 +6,7 @@ This is the format reference for the editor. The code and the other documents of
 - **Live tests.** Saves made by the editor, loaded on a Switch or a PC, played, and often saved again by the game. They are named T1–T8, R7, PC1/PC2 and R8 after the test rounds. The files are in `test_saves/`, and the results are in the [live test log](#10-live-test-log).
 - **Public sources.** Community guides and wikis, cited by URL where they are used.
 
-"All observed saves" means the 54 `.sav` files in `saves/` and `test_saves/`, outside `test_saves/round8/`. That folder holds round 8 (R8): the saves the editor made for it and those the game wrote afterwards (`*_after.sav`), described in the [live test log](#10-live-test-log).
+"All observed saves" means the 54 `.sav` files in `saves/` and `test_saves/`, outside `test_saves/round8/` and `test_saves/round9/`. Those folders hold the later test rounds R8 and R9: the saves the editor made for them and those the game wrote afterwards (`*_after.sav`), described in the [live test log](#10-live-test-log).
 
 ## Contents
 

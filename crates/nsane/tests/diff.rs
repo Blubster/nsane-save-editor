@@ -211,7 +211,7 @@ fn a_save_has_no_changes_against_itself() {
     let mut files = Vec::new();
     saves(&repo().join("saves"), &mut files);
     saves(&repo().join("test_saves"), &mut files);
-    assert_eq!(files.len(), 69);
+    assert_eq!(files.len(), 76);
     for path in files {
         let data = std::fs::read(&path).unwrap();
         let (a, b) = (

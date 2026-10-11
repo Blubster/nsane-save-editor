@@ -324,6 +324,55 @@
       "expect_file": "test_saves/round8/l8_lives_255.sav"
     },
     {
+      "name": "rawnoop/test_saves/round9/r9_lives_100.sav",
+      "input": "test_saves/round9/r9_lives_100.sav",
+      "layer": "igb",
+      "ops": [],
+      "expect_file": "test_saves/round9/r9_lives_100.sav"
+    },
+    {
+      "name": "rawnoop/test_saves/round9/r9_lives_127.sav",
+      "input": "test_saves/round9/r9_lives_127.sav",
+      "layer": "igb",
+      "ops": [],
+      "expect_file": "test_saves/round9/r9_lives_127.sav"
+    },
+    {
+      "name": "rawnoop/test_saves/round9/r9_lives_128.sav",
+      "input": "test_saves/round9/r9_lives_128.sav",
+      "layer": "igb",
+      "ops": [],
+      "expect_file": "test_saves/round9/r9_lives_128.sav"
+    },
+    {
+      "name": "rawnoop/test_saves/round9/r9_lives_200.sav",
+      "input": "test_saves/round9/r9_lives_200.sav",
+      "layer": "igb",
+      "ops": [],
+      "expect_file": "test_saves/round9/r9_lives_200.sav"
+    },
+    {
+      "name": "rawnoop/test_saves/round9/r9_lives_253.sav",
+      "input": "test_saves/round9/r9_lives_253.sav",
+      "layer": "igb",
+      "ops": [],
+      "expect_file": "test_saves/round9/r9_lives_253.sav"
+    },
+    {
+      "name": "rawnoop/test_saves/round9/r9_lives_98.sav",
+      "input": "test_saves/round9/r9_lives_98.sav",
+      "layer": "igb",
+      "ops": [],
+      "expect_file": "test_saves/round9/r9_lives_98.sav"
+    },
+    {
+      "name": "rawnoop/test_saves/round9/r9_lives_99.sav",
+      "input": "test_saves/round9/r9_lives_99.sav",
+      "layer": "igb",
+      "ops": [],
+      "expect_file": "test_saves/round9/r9_lives_99.sav"
+    },
+    {
       "name": "rawnoop/test_saves/step1.sav",
       "input": "test_saves/step1.sav",
       "layer": "igb",
@@ -805,6 +854,55 @@
       "layer": "crash3",
       "ops": [],
       "expect_file": "test_saves/round8/l8_lives_255.sav"
+    },
+    {
+      "name": "noop/test_saves/round9/r9_lives_100.sav",
+      "input": "test_saves/round9/r9_lives_100.sav",
+      "layer": "crash3",
+      "ops": [],
+      "expect_file": "test_saves/round9/r9_lives_100.sav"
+    },
+    {
+      "name": "noop/test_saves/round9/r9_lives_127.sav",
+      "input": "test_saves/round9/r9_lives_127.sav",
+      "layer": "crash3",
+      "ops": [],
+      "expect_file": "test_saves/round9/r9_lives_127.sav"
+    },
+    {
+      "name": "noop/test_saves/round9/r9_lives_128.sav",
+      "input": "test_saves/round9/r9_lives_128.sav",
+      "layer": "crash3",
+      "ops": [],
+      "expect_file": "test_saves/round9/r9_lives_128.sav"
+    },
+    {
+      "name": "noop/test_saves/round9/r9_lives_200.sav",
+      "input": "test_saves/round9/r9_lives_200.sav",
+      "layer": "crash3",
+      "ops": [],
+      "expect_file": "test_saves/round9/r9_lives_200.sav"
+    },
+    {
+      "name": "noop/test_saves/round9/r9_lives_253.sav",
+      "input": "test_saves/round9/r9_lives_253.sav",
+      "layer": "crash3",
+      "ops": [],
+      "expect_file": "test_saves/round9/r9_lives_253.sav"
+    },
+    {
+      "name": "noop/test_saves/round9/r9_lives_98.sav",
+      "input": "test_saves/round9/r9_lives_98.sav",
+      "layer": "crash3",
+      "ops": [],
+      "expect_file": "test_saves/round9/r9_lives_98.sav"
+    },
+    {
+      "name": "noop/test_saves/round9/r9_lives_99.sav",
+      "input": "test_saves/round9/r9_lives_99.sav",
+      "layer": "crash3",
+      "ops": [],
+      "expect_file": "test_saves/round9/r9_lives_99.sav"
     },
     {
       "name": "noop/test_saves/step1.sav",
