@@ -233,6 +233,13 @@
       "expect_file": "test_saves/round8/l1_switch_to_pc.sav"
     },
     {
+      "name": "rawnoop/test_saves/round8/l2_after.sav",
+      "input": "test_saves/round8/l2_after.sav",
+      "layer": "igb",
+      "ops": [],
+      "expect_file": "test_saves/round8/l2_after.sav"
+    },
+    {
       "name": "rawnoop/test_saves/round8/l2_pc_to_switch.sav",
       "input": "test_saves/round8/l2_pc_to_switch.sav",
       "layer": "igb",
@@ -707,6 +714,13 @@
       "layer": "crash3",
       "ops": [],
       "expect_file": "test_saves/round8/l1_switch_to_pc.sav"
+    },
+    {
+      "name": "noop/test_saves/round8/l2_after.sav",
+      "input": "test_saves/round8/l2_after.sav",
+      "layer": "crash3",
+      "ops": [],
+      "expect_file": "test_saves/round8/l2_after.sav"
     },
     {
       "name": "noop/test_saves/round8/l2_pc_to_switch.sav",
