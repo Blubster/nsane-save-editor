@@ -1,6 +1,7 @@
 //! Builds the saves of a round of in-game tests into `test_saves/round8/`:
 //! the Switch ↔ PC conversion, resetting a level, two presets, the bonus gem
-//! with one relic below gold, and the largest life count.
+//! with one relic below gold, the largest life count, and a PC save that
+//! shows the relic times of a few levels on their time panels.
 //!
 //!     cargo run -p nsane --example make_live_round8
 //!
@@ -311,6 +312,62 @@ fn bonus_gem_30() -> Vec<u8> {
     bytes
 }
 
+/// The PC 108% save with a few levels one relic below the time to read:
+/// a level's time panel shows the time of the next relic only. Deep
+/// Trouble, Double Header and Sphynxinator get sapphire (their panels show
+/// gold), Future Frenzy gets gold (its panel shows platinum), each with a
+/// time 1 centisecond under its new relic's threshold. Sphynxinator, whose
+/// gold time every source agrees on, is the control. 66 lives.
+fn relic_panels_pc() -> Vec<u8> {
+    let mut save = load("test_saves/pc/pc2_full108.sav");
+    let below = [
+        ("deeptrouble", Relic::Sapphire),
+        ("doubleheader", Relic::Sapphire),
+        ("sphynxinator", Relic::Sapphire),
+        ("futurefrenzy", Relic::Gold),
+    ];
+    for (key, relic) in below {
+        let level = level(key);
+        let time = presets::matching_time(level, relic).unwrap();
+        apply(
+            &mut save,
+            &[
+                Edit::SetRelic {
+                    level,
+                    relic: Some(relic),
+                },
+                Edit::SetTimes {
+                    level,
+                    times_cs: vec![time],
+                },
+            ],
+        );
+    }
+    lives(&mut save, 66);
+    let expect = Expect {
+        platform: Platform::Pc,
+        lives: 66,
+        percent: 108,
+        crystals: 25,
+        gems: 47,
+        relics: 31,
+        bosses: 5,
+    };
+    let (bytes, back) = build("relic panels", save, &expect);
+    let t = back.totals();
+    assert_eq!((t.platinum, t.gold, t.sapphire), (27, 1, 3));
+    for (key, relic) in below {
+        let level = level(key);
+        assert_eq!(back.relic(level), Some(relic), "{key}");
+        assert_eq!(
+            relic_for_time(level, back.times(level)[0]),
+            Some(relic),
+            "{key}"
+        );
+    }
+    bytes
+}
+
 /// The 19% playthrough save with 255 lives, the most the counter holds.
 fn lives_255() -> Vec<u8> {
     let mut save = load("saves/0019.sav");
@@ -335,6 +392,7 @@ fn main() {
         ("l3_reset_level.sav", reset_level()),
         ("l4_story_up_to_3.sav", story_up_to_3()),
         ("l5_relics_matching.sav", relics_matching()),
+        ("l6_relic_panels_pc.sav", relic_panels_pc()),
         ("l7_bonus_gem_30.sav", bonus_gem_30()),
         ("l8_lives_255.sav", lives_255()),
     ];

@@ -254,6 +254,13 @@
       "expect_file": "test_saves/round8/l5_relics_matching.sav"
     },
     {
+      "name": "rawnoop/test_saves/round8/l6_relic_panels_pc.sav",
+      "input": "test_saves/round8/l6_relic_panels_pc.sav",
+      "layer": "igb",
+      "ops": [],
+      "expect_file": "test_saves/round8/l6_relic_panels_pc.sav"
+    },
+    {
       "name": "rawnoop/test_saves/round8/l7_bonus_gem_30.sav",
       "input": "test_saves/round8/l7_bonus_gem_30.sav",
       "layer": "igb",
@@ -679,6 +686,13 @@
       "layer": "crash3",
       "ops": [],
       "expect_file": "test_saves/round8/l5_relics_matching.sav"
+    },
+    {
+      "name": "noop/test_saves/round8/l6_relic_panels_pc.sav",
+      "input": "test_saves/round8/l6_relic_panels_pc.sav",
+      "layer": "crash3",
+      "ops": [],
+      "expect_file": "test_saves/round8/l6_relic_panels_pc.sav"
     },
     {
       "name": "noop/test_saves/round8/l7_bonus_gem_30.sav",

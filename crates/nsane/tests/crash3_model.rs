@@ -34,7 +34,7 @@ fn game_saves() -> Vec<PathBuf> {
 fn all_saves() -> Vec<PathBuf> {
     let mut out = game_saves();
     sav_files(&repo().join("test_saves"), &mut out);
-    assert_eq!(out.len(), 61);
+    assert_eq!(out.len(), 62);
     out
 }
 
