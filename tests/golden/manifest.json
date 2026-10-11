@@ -194,6 +194,7 @@
     "ops/unlock_warp_room_3_abilities_initial": {"sha256": "7c51c76d3ea108a2ba21a5ed199499888d654888e9823ab51b33ba46bf155dd3", "size": 153600},
     "ops/unlock_warp_room_3_skip_0019": {"sha256": "b24e6065486cda5c9495acdbc4be98694569a3980658b40c9e18c9bca04eba81", "size": 153600},
     "ops/unlock_warp_room_4_abilities_0019": {"sha256": "a869476b2e65750244c3836f868f7aab504441283cb859e5beb5944f40d5c6f1", "size": 153600},
+    "ops/unlock_warp_room_4_all_0019": {"sha256": "ef322f8508f9229ad7b9988ac78159cf0b1ccc319d852d5394392ce36b33cd0f", "size": 153600},
     "ops/unlock_warp_room_5_all_0019": {"sha256": "926f8ec6b2b343b1684ca4a93704924c70c857335c3d5b3c6d5628ab90dfd74d", "size": 153600},
     "ops/unlock_warp_room_5_all_pc": {"sha256": "2866f632a41394cb287a4a7260caa6b7b2db726253211fd00d74a0924341251e", "size": 66787},
     "ops/set_ability_on_initial": {"sha256": "b456541fbbde5b138ce1cff27018ac0a82ab8e15ce4e04821c54a8c36a6a4b5b", "size": 153600},

@@ -2000,6 +2000,14 @@
       ]
     },
     {
+      "name": "ops/unlock_warp_room_4_all_0019",
+      "input": "saves/0019.sav",
+      "layer": "crash3",
+      "ops": [
+        {"op": "unlock_warp_room", "room": 4, "with_abilities": true, "skip_cutscenes": true}
+      ]
+    },
+    {
       "name": "ops/unlock_warp_room_5_all_0019",
       "input": "saves/0019.sav",
       "layer": "crash3",
