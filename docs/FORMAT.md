@@ -3,7 +3,7 @@
 This is the format reference for the editor. The code and the other documents of this repository cite it. Every rule below names its evidence, using these sources:
 
 - **Saves the game wrote.** `saves/0001.sav`–`0019.sav` and `saves/initial_game.sav`: one Switch playthrough, one save after each step (see the [save log](#11-save-log)). `saves/ALCHEMYXSAVE_8.sav`: a fresh PC game. The `*_after*.sav` and `r7a*.sav` files in `test_saves/`: what the game wrote after a live test.
-- **Live tests.** Saves made by the editor, loaded on a Switch or a PC, played, and often saved again by the game. They are named T1–T8, R7, PC1/PC2 and R8 after the test rounds. The files are in `test_saves/`, and the results are in the [live test log](#10-live-test-log).
+- **Live tests.** Saves made by the editor, loaded on a Switch or a PC, played, and often saved again by the game. They are named T1–T8, R7, PC1/PC2, R8 and R9 after the test rounds. The files are in `test_saves/`, and the results are in the [live test log](#10-live-test-log).
 - **Public sources.** Community guides and wikis, cited by URL where they are used.
 
 "All observed saves" means the 54 `.sav` files in `saves/` and `test_saves/`, outside `test_saves/round8/` and `test_saves/round9/`. Those folders hold the later test rounds R8 and R9: the saves the editor made for them and those the game wrote afterwards (`*_after.sav`), described in the [live test log](#10-live-test-log).
@@ -251,7 +251,7 @@ The table at the top of the file holds what the save slot screen shows. The game
 | `story_completed` | int | 1 once Cortex is beaten | `t7_after_beating_cortex.sav` |
 | `active_progression_index` | int | 1 in 0001, 0 in every other observed save, including all saves made in the hub in R7. Left unchanged. | All observed saves |
 | `percent_complete` | float | crystals + gems + relics (any tier) + bosses defeated | All observed saves |
-| `life_count` | int | **The only place lives are stored.** The game reads it back on load: 42 in lives42 loaded with 42 lives, and dying gave 41 (0019). 255 loads and shows as 255, and dying gives 254; at 254, picking up a life (twice) left the counter at 254, so the game adds no life above some maximum, not yet found. | lives42, PC1, R8 |
+| `life_count` | int | **The only place lives are stored.** The game reads it back on load: 42 in lives42 loaded with 42 lives, and dying gave 41 (0019). **Picking up a life adds one only below 99**: at 99 it stays 99, and from 98 two pickups give 99 then nothing (R9). Higher values still work: 255 loads and shows as 255, dying gives 254, and a pickup at 254 adds nothing (R8). So play never takes the counter above 99. | lives42, PC1, R8, R9 |
 | `key_count` | int | Always 0 in Crash 3 saves; left unchanged | All observed saves |
 | `crystal_count`, `gem_count`, `sapphire_count`, `gold_count`, `platinum_count` | int | Totals | All observed saves |
 
@@ -369,7 +369,7 @@ The isolated differences (Tomb Time gold in Q, Midnight Run platinum in W, Hot C
 
 ## 10. Live test log
 
-The tests ran on a Switch (step2, T1–T8, R7, lives42, most of R8) and on PC (PC1, PC2, two R8 files). Each test save has its own life count, so the loaded file can be confirmed on the save slot.
+The tests ran on a Switch (step2, T1–T8, R7, lives42, most of R8, R9) and on PC (PC1, PC2, two R8 files). Each test save has its own life count, so the loaded file can be confirmed on the save slot.
 
 | Test | File | Edit | Result in game |
 |---|---|---|---|
@@ -401,6 +401,7 @@ The tests ran on a Switch (step2, T1–T8, R7, lives42, most of R8) and on PC (P
 | R8 | `test_saves/round8/l6_relic_panels_pc.sav` (PC) | PC2 with Deep Trouble, Double Header and Sphynxinator at sapphire and Future Frenzy at gold, 66 lives | The time panels show the next relic's time: see §9 |
 | R8 | `test_saves/round8/l7_bonus_gem_30.sav` | T7 with Future Tense at sapphire: 30 gold relics and 1 sapphire, 107%, 67 lives | The 47th gem spawns; picking it up gives 108% and sets `LastGemRewarded` (`l7_after.sav`). |
 | R8 | `test_saves/round8/l8_lives_255.sav` | 0019 with 255 lives | 255 shown; dying gives 254; at 254, picking up a life twice leaves 254 (`l8_after.sav`). |
+| R9 | `test_saves/round9/r9_lives_99.sav` | 0019 with 99 lives (the folder also holds 98, 100, 127, 128, 200 and 253, which weren't needed) | A pickup at 99 adds nothing. After a death (98), two pickups give 99, then nothing. |
 
 `test_saves/t7_after_picking_47th_gem.sav` is byte-identical to `t7_bonus_gem.sav` (the wrong file was copied back); `t7_after_beating_cortex.sav` shows the gem taken. `test_saves/r7_racegems.sav` (both gems of Area 51? and Rings of Power removed) was prepared but not played.
 
