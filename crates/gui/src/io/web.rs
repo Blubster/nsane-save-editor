@@ -10,13 +10,23 @@ use eframe::wasm_bindgen::closure::Closure;
 use eframe::wasm_bindgen::{JsCast as _, JsValue};
 use egui::{Context, DroppedFileHandle};
 
+/// Where a file read in the background comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Via {
+    /// The open dialog, which is only shown once unsaved changes were dealt
+    /// with.
+    Dialog,
+    /// Dropped onto the page: it still has to ask about unsaved changes.
+    Drop,
+    /// The template picked for a conversion.
+    Template,
+}
+
 /// A file read in the background.
 pub struct Incoming {
     pub name: String,
     pub bytes: Result<Vec<u8>, String>,
-    /// From the open dialog, which is only shown once unsaved changes were
-    /// dealt with. A dropped file still has to ask.
-    pub picked: bool,
+    pub via: Via,
 }
 
 /// Files read asynchronously, delivered to the frame that polls for them.
@@ -36,9 +46,18 @@ impl Inbox {
     /// Shows the open dialog. Call it while handling the click or key press:
     /// browsers only show a file picker in response to the user.
     pub fn pick_open(&self, ctx: &Context) {
+        self.pick(ctx, "Open a save file", Via::Dialog);
+    }
+
+    /// Shows the dialog that picks a conversion's template, as `pick_open`.
+    pub fn pick_template(&self, ctx: &Context) {
+        self.pick(ctx, "Pick a save from the other platform", Via::Template);
+    }
+
+    fn pick(&self, ctx: &Context, title: &str, via: Via) {
         // Built now, inside the user's gesture; it shows when first polled.
         let dialog = rfd::AsyncFileDialog::new()
-            .set_title("Open a save file")
+            .set_title(title)
             .add_filter("Save files", &["sav"])
             .pick_file();
         let tx = self.tx.clone();
@@ -50,7 +69,7 @@ impl Inbox {
             let incoming = Incoming {
                 name: file.file_name(),
                 bytes: Ok(file.read().await),
-                picked: true,
+                via,
             };
             if tx.send(incoming).is_ok() {
                 ctx.request_repaint();
@@ -69,7 +88,7 @@ impl Inbox {
                 .send(Incoming {
                     name,
                     bytes,
-                    picked: false,
+                    via: Via::Drop,
                 })
                 .is_ok()
             {

@@ -125,7 +125,7 @@ fn room_card(
 }
 
 /// An amber banner with a warning.
-fn banner(ui: &mut Ui, message: &str) {
+pub(super) fn banner(ui: &mut Ui, message: &str) {
     let pal = theme::palette(ui.visuals().dark_mode);
     Frame::new()
         .fill(theme::mix(pal.warning.base, pal.surface, 80))

@@ -28,11 +28,13 @@ pub enum View {
     Diagnostics,
     /// The review shown before saving.
     SaveReview,
+    /// The dialog that converts the save to the other platform.
+    Convert,
 }
 
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))] // set from the command line
 impl View {
-    pub const ALL: [View; 9] = [
+    pub const ALL: [View; 10] = [
         View::Unsaved,
         View::InvalidTime,
         View::Progress,
@@ -42,6 +44,7 @@ impl View {
         View::PresetStory3,
         View::Diagnostics,
         View::SaveReview,
+        View::Convert,
     ];
 
     pub fn name(self) -> &'static str {
@@ -55,6 +58,7 @@ impl View {
             View::PresetStory3 => "preset-story3",
             View::Diagnostics => "diagnostics",
             View::SaveReview => "save-review",
+            View::Convert => "convert",
         }
     }
 
@@ -82,6 +86,9 @@ pub struct Options {
     /// Edits to apply to it at start: a JSON list of edit ops.
     #[cfg(not(target_arch = "wasm32"))]
     pub apply: Option<PathBuf>,
+    /// The template of `--view convert`.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub template: Option<PathBuf>,
     /// The level selected at start.
     pub select: Option<LevelId>,
     pub view: Option<View>,
@@ -113,7 +120,10 @@ usage: nsane-save-editor [options]
                          first locked warp room), cutscenes (its story
                          scenes), preset-108 and preset-story3 (preset
                          dialogs), diagnostics (the diagnostics panel),
-                         save-review (the review shown before saving)
+                         save-review (the review shown before saving),
+                         convert (the dialog that converts the save to
+                         the other platform)
+  --template FILE.sav    the template picked in --view convert
   --icon-gallery         show every icon in every state and size
   --theme light|dark     force a theme instead of following the system
   --size WxH             inner window size in points, e.g. 1280x800
@@ -132,6 +142,7 @@ impl Options {
             match arg.as_str() {
                 "--open" => options.open = Some(value("--open")?.into()),
                 "--apply" => options.apply = Some(value("--apply")?.into()),
+                "--template" => options.template = Some(value("--template")?.into()),
                 "--select" => {
                     let key = value("--select")?;
                     options.select =
@@ -220,6 +231,8 @@ mod tests {
             "saves/0019.sav",
             "--apply",
             "edits.json",
+            "--template",
+            "saves/ALCHEMYXSAVE_8.sav",
             "--select",
             "toadvillage",
             "--view",
@@ -230,6 +243,7 @@ mod tests {
         .unwrap();
         assert_eq!(o.open, Some("saves/0019.sav".into()));
         assert_eq!(o.apply, Some("edits.json".into()));
+        assert_eq!(o.template, Some("saves/ALCHEMYXSAVE_8.sav".into()));
         assert_eq!(o.select, LevelId::from_key("toadvillage"));
         assert_eq!(o.view, Some(View::Unsaved));
         assert_eq!(o.screenshots.len(), 1);

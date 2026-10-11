@@ -10,10 +10,12 @@ mod preview;
 mod progress;
 mod review;
 mod rooms;
+pub mod transfer_ui;
 
 pub use diagnostics_ui::save_blocker;
 pub use presets_ui::Preset;
 pub use review::SaveReview;
+pub use transfer_ui::{Convert, Request as ConvertRequest, Written, other as other_platform};
 
 use nsane::Document;
 use nsane::crash3::LevelId;

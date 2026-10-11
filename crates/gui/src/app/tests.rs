@@ -1535,3 +1535,180 @@ fn edits_from_a_json_file_are_applied_at_start() {
     assert!(history(&harness).is_empty());
     fs::remove_dir_all(dir).unwrap();
 }
+
+// ------------------------------------------------------------ conversion
+
+fn convert<'a>(harness: &'a Harness<'_, App>) -> &'a Convert {
+    harness
+        .state()
+        .convert
+        .as_ref()
+        .expect("the dialog is open")
+}
+
+fn disabled(harness: &Harness<'_, App>, label: &str) -> bool {
+    harness.get_by_label(label).accesskit_node().is_disabled()
+}
+
+/// Clicks in the conversion dialog and lets it settle: its contents change
+/// size, and the modal takes a few frames to centre again.
+fn settle_click(harness: &mut Harness<'_, App>, label: &str) {
+    open_dialog(harness, label);
+}
+
+/// Clicks a button of the conversion dialog that shows a file dialog,
+/// which answers `path`. Returns where that dialog started.
+fn click_with_dialog(harness: &mut Harness<'_, App>, label: &str, path: PathBuf) -> PathBuf {
+    harness.state_mut().dialog_answers.push_back(Some(path));
+    settle_click(harness, label);
+    assert!(
+        harness.state().dialog_answers.is_empty(),
+        "the dialog was shown for {label}"
+    );
+    harness
+        .state_mut()
+        .dialog_starts
+        .pop()
+        .flatten()
+        .expect("a start path")
+}
+
+#[test]
+fn converting_0019_to_pc_and_back() {
+    let template = scratch_copy("saves/ALCHEMYXSAVE_8.sav", "convert");
+    let dir = template.parent().unwrap().to_owned();
+    let source =
+        nsane::crash3::Crash3Save::parse(&fs::read(repo_file("saves/0019.sav")).unwrap()).unwrap();
+    let mut harness = tall_harness(opening(repo_file("saves/0019.sav")));
+    assert!(harness.query_by_label("Convert to Switch…").is_none());
+    open_dialog(&mut harness, "Convert to PC…");
+    assert_eq!(convert(&harness).target, nsane::Platform::Pc);
+    harness.get_by_label_contains("Not yet tested in game. Keep a backup of your saves.");
+    harness.get_by_label("0019.sav · Switch · 19% · 41 lives");
+    assert!(disabled(&harness, "Convert…"), "no template yet");
+    // Shortcuts wait while the dialog is open.
+    press(&mut harness, Modifiers::COMMAND, Key::O);
+    assert!(harness.state().dialog.is_none());
+
+    click_with_dialog(&mut harness, "Pick file…", template.clone());
+    harness.get_by_label("ALCHEMYXSAVE_8.sav");
+    harness.get_by_label("No game data lost: the converted save reads back the same.");
+    harness.get_by_label("Suggested file name: ALCHEMYXSAVE_8.sav");
+    assert!(!disabled(&harness, "Convert…"));
+
+    // Written over the template, as the dialog suggests: it is backed up.
+    let start = click_with_dialog(&mut harness, "Convert…", template.clone());
+    assert_eq!(start, template);
+    assert!(convert(&harness).is_written());
+    assert_eq!(backups(&dir).len(), 1);
+    assert_eq!(
+        fs::read(&backups(&dir)[0]).unwrap(),
+        fs::read(repo_file("saves/ALCHEMYXSAVE_8.sav")).unwrap()
+    );
+    let pc_bytes = fs::read(&template).unwrap();
+    let pc = nsane::crash3::Crash3Save::parse(&pc_bytes).unwrap();
+    assert_eq!(nsane::Platform::of(&pc), nsane::Platform::Pc);
+    assert_eq!(pc_bytes, pc.igb().build_unpadded().unwrap(), "unpadded");
+    assert_eq!(pc.totals(), source.totals());
+    assert_eq!(pc.lives(), source.lives());
+
+    harness.get_by_label("Converted to PC");
+    click(&mut harness, "Open the converted save");
+    assert!(harness.state().convert.is_none());
+    assert_eq!(doc(&harness).platform(), nsane::Platform::Pc);
+    assert_eq!(doc(&harness).file_name(), Some("ALCHEMYXSAVE_8.sav"));
+
+    // Back to Switch with the built-in template. The suggested name is the
+    // source's, but not over the open PC save itself.
+    open_dialog(&mut harness, "Convert to Switch…");
+    settle_click(&mut harness, "Built-in new-game template");
+    harness.get_by_label("No game data lost: the converted save reads back the same.");
+    let back = dir.join("back.sav");
+    let start = click_with_dialog(&mut harness, "Convert…", back.clone());
+    assert_eq!(start, dir.join("ALCHEMYXSAVE_8_switch.sav"));
+    harness.get_by_label("Converted to Switch");
+    harness.get_by_label_contains(&format!("Saved {}", back.display()));
+    assert_eq!(backups(&dir).len(), 1, "a new file has nothing to back up");
+    let switch_bytes = fs::read(&back).unwrap();
+    assert_eq!(switch_bytes.len(), 153_600);
+    let switch = nsane::crash3::Crash3Save::parse(&switch_bytes).unwrap();
+    assert!(nsane::diff::diff(&source, &switch).is_empty());
+    click(&mut harness, "Close");
+    assert!(harness.state().convert.is_none());
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn a_wrong_template_is_refused_inline() {
+    let mut harness = tall_harness(opening(repo_file("saves/0019.sav")));
+    open_dialog(&mut harness, "Convert to PC…");
+    click_with_dialog(&mut harness, "Pick file…", repo_file("saves/0018.sav"));
+    harness.get_by_label(
+        "0018.sav is a Switch save, like the one being converted. Pick a save from the PC \
+         version.",
+    );
+    assert!(disabled(&harness, "Convert…"));
+
+    click_with_dialog(&mut harness, "Pick file…", repo_file("Cargo.toml"));
+    harness.get_by_label_contains("Not an N. Sane Trilogy save");
+    assert!(disabled(&harness, "Convert…"));
+
+    // The built-in template works; going back to the picked file doesn't.
+    settle_click(&mut harness, "Built-in new-game template");
+    assert!(
+        harness
+            .query_by_label_contains("Not an N. Sane Trilogy save")
+            .is_none()
+    );
+    assert!(!disabled(&harness, "Convert…"));
+    settle_click(&mut harness, "My save from the PC version (recommended)");
+    harness.get_by_label_contains("Not an N. Sane Trilogy save");
+    assert!(disabled(&harness, "Convert…"));
+
+    // A picked file that can't be read.
+    click_with_dialog(&mut harness, "Pick file…", repo_file("saves/missing.sav"));
+    harness.get_by_label_contains("Can't read missing.sav");
+    assert!(disabled(&harness, "Convert…"));
+    click(&mut harness, "Cancel");
+    assert!(harness.state().convert.is_none());
+}
+
+#[test]
+fn unsaved_edits_are_converted() {
+    let mut harness = tall_harness(opening(repo_file("saves/0019.sav")));
+    type_lives(&mut harness, "42");
+    open_dialog(&mut harness, "Convert to PC…");
+    settle_click(&mut harness, "Built-in new-game template");
+    harness.get_by_label(
+        "Includes the unsaved changes (1 change). The open save itself is not written.",
+    );
+    let doc = doc(&harness).clone();
+    let state = harness.state_mut().convert.as_mut().unwrap();
+    let crate::games::crash3::transfer_ui::Outcome::Converted(converted) = state.outcome(&doc)
+    else {
+        panic!("converted");
+    };
+    assert_eq!((converted.before_lives, converted.lives), (42, 42));
+    assert!(converted.changes.is_empty());
+    // One conversion, however many frames.
+    harness.run_steps(5);
+    assert_eq!(convert(&harness).runs, 1);
+    // Ctrl+Z waits for the dialog.
+    press(&mut harness, Modifiers::COMMAND, Key::Z);
+    assert_eq!(lives(&harness), 42);
+}
+
+#[test]
+fn the_convert_view_picks_the_template() {
+    let mut harness = tall_harness(app(Options {
+        view: Some(View::Convert),
+        template: Some(repo_file("saves/ALCHEMYXSAVE_8.sav")),
+        ..opening_options("saves/0019.sav")
+    }));
+    harness.run_steps(4);
+    assert_eq!(
+        convert(&harness).choice,
+        crate::games::crash3::transfer_ui::Choice::Own
+    );
+    harness.get_by_label("No game data lost: the converted save reads back the same.");
+}

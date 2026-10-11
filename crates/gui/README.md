@@ -21,6 +21,8 @@ The badges in the toolbar and the overview count the diagnostics (errors, warnin
 
 Saving unsaved changes first shows a review: every change since the file was opened, the totals recomputed when writing, the warnings left, and the backup that will be made. "Don't show this again" turns it off; the settings menu (⚙) turns it back on.
 
+**Convert to PC… / Convert to Switch…** writes a copy of the open save, unsaved changes included, for the other version of the game. The game data is copied into a save of that platform, the template: preferably one of your own saves from it, since it matches your game version, or the new-game save built into the editor. The dialog shows the totals of the converted save as read back from the bytes to write, and refuses to write if any game data would differ. The PC game only loads files named `ALCHEMYXSAVE_<n>.sav`: to replace a slot, write over the file you picked as template (a backup is made). The conversion is **experimental** until it has been checked in game on both platforms: keep a backup of your saves.
+
 ### In a browser
 
 ```sh
@@ -66,7 +68,8 @@ The file dialogs go through the desktop portal (`xdg-desktop-portal`) over D-Bus
 | `--open FILE.sav` | Open a save at start. |
 | `--apply EDITS.json` | Apply edits to it at start, one undo step each: a JSON list of edit ops, as in `tests/golden/scenarios.json`. |
 | `--select LEVEL` | Select a level by its key (`toadvillage`, `deeptrouble`, …). |
-| `--view NAME` | Set up a state at start: `unsaved` (the question asked before unsaved changes are lost), `invalid-time` (a refused time typed for the selected level), `progress` (the Progress tab), `unlock-dialog` (its dialog for the first locked warp room), `cutscenes` (the Progress tab scrolled to the story scenes), `preset-108` and `preset-story3` (the dialogs of those presets), `diagnostics` (the diagnostics panel), `save-review` (the review shown before saving; nothing is written). |
+| `--view NAME` | Set up a state at start: `unsaved` (the question asked before unsaved changes are lost), `invalid-time` (a refused time typed for the selected level), `progress` (the Progress tab), `unlock-dialog` (its dialog for the first locked warp room), `cutscenes` (the Progress tab scrolled to the story scenes), `preset-108` and `preset-story3` (the dialogs of those presets), `diagnostics` (the diagnostics panel), `save-review` (the review shown before saving; nothing is written), `convert` (the conversion dialog; nothing is written). |
+| `--template FILE.sav` | The template picked in `--view convert`. |
 | `--theme light\|dark` | Force a theme instead of following the system. |
 | `--size WxH` | Inner window size in points, for example `1280x800`. |
 | `--maximized` | Start maximized. |

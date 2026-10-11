@@ -15,7 +15,9 @@ use nsane::crash3::{Edit, LevelId};
 use nsane::{Document, OpenError};
 
 use crate::gallery::Gallery;
-use crate::games::crash3::{Crash3Ui, Preset, SaveReview, save_blocker};
+use crate::games::crash3::{
+    Convert, ConvertRequest, Crash3Ui, Preset, SaveReview, Written, other_platform, save_blocker,
+};
 use crate::icons::{self, Icon, IconState};
 use crate::options::{Options, View};
 use crate::prefs::Prefs;
@@ -67,6 +69,8 @@ pub enum Action {
     },
     Save,
     SaveAs,
+    /// Opens the dialog that converts the save to the other platform.
+    Convert,
     Undo,
     Redo,
     /// Edits applied together as one undo step.
@@ -208,6 +212,8 @@ pub struct App {
     selected: Option<LevelId>,
     crash3: Crash3Ui,
     dialog: Option<Dialog>,
+    /// The conversion to the other platform, while its dialog is open.
+    convert: Option<Convert>,
     toasts: Vec<Toast>,
     prefs: Prefs,
     /// The settings as last written to storage; `None` when they are not
@@ -231,6 +237,12 @@ pub struct App {
     inbox: crate::io::web::Inbox,
     #[cfg(target_arch = "wasm32")]
     leave_guard: crate::io::web::LeaveGuard,
+    /// What the file dialogs of the conversion return in tests, in turn.
+    #[cfg(test)]
+    dialog_answers: std::collections::VecDeque<Option<PathBuf>>,
+    /// The paths those dialogs suggested or started in.
+    #[cfg(test)]
+    dialog_starts: Vec<Option<PathBuf>>,
 }
 
 impl App {
@@ -270,6 +282,7 @@ impl App {
             selected: options.select,
             crash3: Crash3Ui::default(),
             dialog: None,
+            convert: None,
             toasts: Vec::new(),
             prefs,
             stored_prefs: stored,
@@ -285,6 +298,10 @@ impl App {
             inbox: Default::default(),
             #[cfg(target_arch = "wasm32")]
             leave_guard: Default::default(),
+            #[cfg(test)]
+            dialog_answers: Default::default(),
+            #[cfg(test)]
+            dialog_starts: Vec::new(),
         };
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(path) = options.open {
@@ -321,6 +338,13 @@ impl App {
                 }
             }
             Some(View::Diagnostics) => app.crash3.open_diagnostics(),
+            Some(View::Convert) => {
+                app.open_convert();
+                #[cfg(not(target_arch = "wasm32"))]
+                if let Some(path) = options.template {
+                    app.template_path(path);
+                }
+            }
             Some(View::SaveReview) => {
                 if let Some(file) = &app.file {
                     #[cfg(not(target_arch = "wasm32"))]
@@ -401,6 +425,7 @@ impl App {
                     change_count: None,
                 });
                 self.crash3.reset();
+                self.convert = None;
                 true
             }
             Err(e) => {
@@ -688,6 +713,162 @@ impl App {
         }
     }
 
+    /// Opens the dialog that converts the open save to the other platform.
+    fn open_convert(&mut self) {
+        if let Some(file) = &self.file {
+            self.convert = Some(Convert::new(other_platform(file.doc.platform())));
+        }
+    }
+
+    fn convert_dialog(&mut self, ctx: &Context, actions: &mut Vec<Action>) {
+        let (Some(convert), Some(file)) = (&mut self.convert, &mut self.file) else {
+            return;
+        };
+        let unsaved = file.doc.is_dirty().then(|| file.change_count());
+        match convert.show(ctx, &file.doc, unsaved, actions) {
+            None => {}
+            Some(ConvertRequest::Close) => self.convert = None,
+            Some(ConvertRequest::PickTemplate) => self.pick_template(ctx),
+            Some(ConvertRequest::Write { bytes, name }) => self.write_converted(bytes, name),
+        }
+    }
+
+    /// A file dialog of the conversion: Save As when `save`, else Open.
+    #[cfg(all(not(target_arch = "wasm32"), not(test)))]
+    fn convert_file_dialog(
+        &mut self,
+        save: bool,
+        start: Option<&Path>,
+    ) -> Result<Option<PathBuf>, crate::io::native::DialogUnavailable> {
+        if save {
+            crate::io::native::pick_save(start)
+        } else {
+            crate::io::native::pick_open(start)
+        }
+    }
+
+    /// Tests answer the dialogs in advance.
+    #[cfg(test)]
+    fn convert_file_dialog(
+        &mut self,
+        _save: bool,
+        start: Option<&Path>,
+    ) -> Result<Option<PathBuf>, crate::io::native::DialogUnavailable> {
+        self.dialog_starts.push(start.map(Path::to_owned));
+        Ok(self
+            .dialog_answers
+            .pop_front()
+            .expect("the test gives the dialog's answer"))
+    }
+
+    /// The folder of the open save, or the last one used.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn current_dir(&self) -> Option<PathBuf> {
+        self.file
+            .as_ref()
+            .and_then(|f| f.path.as_deref())
+            .and_then(Path::parent)
+            .map(Path::to_owned)
+            .or_else(|| self.prefs.last_dir.clone())
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn pick_template(&mut self, _ctx: &Context) {
+        let start = self
+            .convert
+            .as_ref()
+            .and_then(|c| c.template_dir())
+            .map(Path::to_owned)
+            .or_else(|| self.current_dir());
+        match self.convert_file_dialog(false, start.as_deref()) {
+            Ok(Some(path)) => self.template_path(path),
+            Ok(None) => {}
+            Err(_) => self.dialog_unavailable(),
+        }
+    }
+
+    /// Still in the click that asked for it: see `proceed`.
+    #[cfg(target_arch = "wasm32")]
+    fn pick_template(&mut self, ctx: &Context) {
+        self.inbox.pick_template(ctx);
+    }
+
+    /// Reads the template of the conversion from `path`.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn template_path(&mut self, path: PathBuf) {
+        let name = display_name(&path);
+        let Some(convert) = &mut self.convert else {
+            return;
+        };
+        match crate::io::native::read(&path) {
+            Ok(bytes) => convert.set_template(name, &bytes, Some(path)),
+            Err(e) => convert.template_unreadable(name.clone(), format!("Can't read {name}: {e}")),
+        }
+    }
+
+    /// Where to suggest writing the converted save: next to the template
+    /// picked (to replace it), else next to the open save. Never the open
+    /// save itself, which is of the other platform.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn converted_path(&self, name: &str) -> PathBuf {
+        let source = self.file.as_ref().and_then(|f| f.path.as_deref());
+        let dir = self
+            .convert
+            .as_ref()
+            .and_then(|c| c.template_dir())
+            .map(Path::to_owned)
+            .or_else(|| self.current_dir());
+        let mut path = dir.map_or_else(|| PathBuf::from(name), |d| d.join(name));
+        if source == Some(path.as_path())
+            && let Some(convert) = &self.convert
+        {
+            let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+            let target = convert.target.name().to_lowercase();
+            path = path.with_file_name(format!("{stem}_{target}.sav"));
+        }
+        path
+    }
+
+    /// Asks where to write the converted save, then writes it.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn write_converted(&mut self, bytes: Vec<u8>, name: String) {
+        let suggested = self.converted_path(&name);
+        match self.convert_file_dialog(true, Some(&suggested)) {
+            Ok(Some(path)) => self.write_converted_to(path, &bytes),
+            Ok(None) => {}
+            Err(_) => self.dialog_unavailable(),
+        }
+    }
+
+    /// Writes the converted save to `path`, backing up the file it replaces,
+    /// as Save does.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn write_converted_to(&mut self, path: PathBuf, bytes: &[u8]) {
+        let now = crate::io::native::local_now();
+        let written = crate::io::native::write_with_backup(&path, bytes, now);
+        if written.is_ok() {
+            self.remember_folder(&path);
+        }
+        let Some(convert) = &mut self.convert else {
+            return;
+        };
+        match written {
+            Ok(backup) => convert.written(Written::File { path, backup }),
+            Err(e) => convert.write_failed(format!("Can't write {}: {e}", path.display())),
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn write_converted(&mut self, bytes: Vec<u8>, name: String) {
+        let Some(convert) = &mut self.convert else {
+            return;
+        };
+        match crate::io::web::download(&name, &bytes) {
+            Ok(()) => convert.written(Written::Download { name, bytes }),
+            Err(e) => convert.write_failed(format!("Can't download {name}: {e}")),
+        }
+    }
+
     /// Runs the frame's actions. Edits go first: a field that lost focus
     /// because a toolbar button was clicked commits its value in the same
     /// frame, and the save that follows must include it.
@@ -705,6 +886,7 @@ impl App {
                 }
                 Action::Save => self.save(ctx, None),
                 Action::SaveAs => self.save_as(ctx, None),
+                Action::Convert => self.open_convert(),
                 Action::Undo => {
                     if let Some(file) = &mut self.file
                         && file.doc.undo()
@@ -726,7 +908,7 @@ impl App {
 
     /// The keyboard shortcuts of this frame.
     fn shortcuts(&mut self, ctx: &Context, actions: &mut Vec<Action>) {
-        if self.dialog.is_some() || self.crash3.has_dialog() {
+        if self.dialog.is_some() || self.crash3.has_dialog() || self.convert.is_some() {
             return;
         }
         // A text field keeps its own undo, and holds a value not applied
@@ -779,14 +961,23 @@ impl App {
     /// Files the browser has finished reading.
     #[cfg(target_arch = "wasm32")]
     fn incoming(&mut self, actions: &mut Vec<Action>) {
+        use crate::io::web::Via;
         while let Some(incoming) = self.inbox.try_recv() {
             let name = incoming.name;
-            match incoming.bytes {
-                Ok(bytes) if incoming.picked => {
+            match (incoming.via, incoming.bytes) {
+                (Via::Template, bytes) => {
+                    if let Some(convert) = &mut self.convert {
+                        match bytes {
+                            Ok(bytes) => convert.set_template(name, &bytes),
+                            Err(e) => convert.template_unreadable(name, e),
+                        }
+                    }
+                }
+                (Via::Dialog, Ok(bytes)) => {
                     self.open_bytes(&bytes, name);
                 }
-                Ok(bytes) => actions.push(Action::OpenBytes { name, bytes }),
-                Err(e) => self.error(format!("Can't open {name}"), e),
+                (Via::Drop, Ok(bytes)) => actions.push(Action::OpenBytes { name, bytes }),
+                (_, Err(e)) => self.error(format!("Can't open {name}"), e),
             }
         }
     }
@@ -858,6 +1049,19 @@ impl App {
                         .clicked()
                     {
                         actions.push(Action::SaveAs);
+                    }
+                    if let Some(file) = &self.file {
+                        let target = other_platform(file.doc.platform());
+                        if ui
+                            .button(format!("Convert to {target}…"))
+                            .on_hover_text(format!(
+                                "Make a copy of this save for the {target} version of the \
+                                 game (experimental)"
+                            ))
+                            .clicked()
+                        {
+                            actions.push(Action::Convert);
+                        }
                     }
                     ui.separator();
                     self.undo_redo(ui, actions, &tip);
@@ -1326,6 +1530,7 @@ impl App {
                     }
                 });
             }
+            self.convert_dialog(&ctx, &mut actions);
             self.dialogs(&ctx);
             self.toasts(&ctx);
             self.drop_hint(&ctx);
@@ -1547,7 +1752,7 @@ fn plural(n: usize, one: &str, many: &str) -> String {
     }
 }
 
-fn open_error_message(e: &OpenError) -> String {
+pub(crate) fn open_error_message(e: &OpenError) -> String {
     match e {
         nsane::Error::NotASave(why) => format!("Not an N. Sane Trilogy save: {why}."),
         nsane::Error::Igb(e) => format!("Not an N. Sane Trilogy save: {e}."),
