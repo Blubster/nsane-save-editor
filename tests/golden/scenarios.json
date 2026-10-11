@@ -219,6 +219,55 @@
       "expect_file": "test_saves/r7a5.sav"
     },
     {
+      "name": "rawnoop/test_saves/round8/l1_switch_to_pc.sav",
+      "input": "test_saves/round8/l1_switch_to_pc.sav",
+      "layer": "igb",
+      "ops": [],
+      "expect_file": "test_saves/round8/l1_switch_to_pc.sav"
+    },
+    {
+      "name": "rawnoop/test_saves/round8/l2_pc_to_switch.sav",
+      "input": "test_saves/round8/l2_pc_to_switch.sav",
+      "layer": "igb",
+      "ops": [],
+      "expect_file": "test_saves/round8/l2_pc_to_switch.sav"
+    },
+    {
+      "name": "rawnoop/test_saves/round8/l3_reset_level.sav",
+      "input": "test_saves/round8/l3_reset_level.sav",
+      "layer": "igb",
+      "ops": [],
+      "expect_file": "test_saves/round8/l3_reset_level.sav"
+    },
+    {
+      "name": "rawnoop/test_saves/round8/l4_story_up_to_3.sav",
+      "input": "test_saves/round8/l4_story_up_to_3.sav",
+      "layer": "igb",
+      "ops": [],
+      "expect_file": "test_saves/round8/l4_story_up_to_3.sav"
+    },
+    {
+      "name": "rawnoop/test_saves/round8/l5_relics_matching.sav",
+      "input": "test_saves/round8/l5_relics_matching.sav",
+      "layer": "igb",
+      "ops": [],
+      "expect_file": "test_saves/round8/l5_relics_matching.sav"
+    },
+    {
+      "name": "rawnoop/test_saves/round8/l7_bonus_gem_30.sav",
+      "input": "test_saves/round8/l7_bonus_gem_30.sav",
+      "layer": "igb",
+      "ops": [],
+      "expect_file": "test_saves/round8/l7_bonus_gem_30.sav"
+    },
+    {
+      "name": "rawnoop/test_saves/round8/l8_lives_255.sav",
+      "input": "test_saves/round8/l8_lives_255.sav",
+      "layer": "igb",
+      "ops": [],
+      "expect_file": "test_saves/round8/l8_lives_255.sav"
+    },
+    {
       "name": "rawnoop/test_saves/step1.sav",
       "input": "test_saves/step1.sav",
       "layer": "igb",
@@ -595,6 +644,55 @@
       "layer": "crash3",
       "ops": [],
       "expect_file": "test_saves/r7a5.sav"
+    },
+    {
+      "name": "noop/test_saves/round8/l1_switch_to_pc.sav",
+      "input": "test_saves/round8/l1_switch_to_pc.sav",
+      "layer": "crash3",
+      "ops": [],
+      "expect_file": "test_saves/round8/l1_switch_to_pc.sav"
+    },
+    {
+      "name": "noop/test_saves/round8/l2_pc_to_switch.sav",
+      "input": "test_saves/round8/l2_pc_to_switch.sav",
+      "layer": "crash3",
+      "ops": [],
+      "expect_file": "test_saves/round8/l2_pc_to_switch.sav"
+    },
+    {
+      "name": "noop/test_saves/round8/l3_reset_level.sav",
+      "input": "test_saves/round8/l3_reset_level.sav",
+      "layer": "crash3",
+      "ops": [],
+      "expect_file": "test_saves/round8/l3_reset_level.sav"
+    },
+    {
+      "name": "noop/test_saves/round8/l4_story_up_to_3.sav",
+      "input": "test_saves/round8/l4_story_up_to_3.sav",
+      "layer": "crash3",
+      "ops": [],
+      "expect_file": "test_saves/round8/l4_story_up_to_3.sav"
+    },
+    {
+      "name": "noop/test_saves/round8/l5_relics_matching.sav",
+      "input": "test_saves/round8/l5_relics_matching.sav",
+      "layer": "crash3",
+      "ops": [],
+      "expect_file": "test_saves/round8/l5_relics_matching.sav"
+    },
+    {
+      "name": "noop/test_saves/round8/l7_bonus_gem_30.sav",
+      "input": "test_saves/round8/l7_bonus_gem_30.sav",
+      "layer": "crash3",
+      "ops": [],
+      "expect_file": "test_saves/round8/l7_bonus_gem_30.sav"
+    },
+    {
+      "name": "noop/test_saves/round8/l8_lives_255.sav",
+      "input": "test_saves/round8/l8_lives_255.sav",
+      "layer": "crash3",
+      "ops": [],
+      "expect_file": "test_saves/round8/l8_lives_255.sav"
     },
     {
       "name": "noop/test_saves/step1.sav",

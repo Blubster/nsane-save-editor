@@ -42,7 +42,7 @@ fn all_saves() -> Vec<PathBuf> {
     saves(&repo().join("saves"), &mut out);
     saves(&repo().join("test_saves"), &mut out);
     out.sort();
-    assert_eq!(out.len(), 54);
+    assert_eq!(out.len(), 61);
     out
 }
 
