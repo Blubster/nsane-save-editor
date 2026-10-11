@@ -11,6 +11,10 @@ cargo run -p gui -- --open saves/0019.sav
 
 Open a save with the **Open** button, by dropping the file onto the window, or with `--open`. Saving over a file first copies it to `<name>.<YYYYMMDD-HHMMSS>.bak` next to it.
 
+### Editing Crash 3
+
+The Crash 3 tab shows the overall progress on the left (percentage, totals, lives, the bonus gem, the secret warp room's relic thresholds, the story and any problems found in the save) and the six warp rooms in the middle. In a room, each level is a row of icons: crystal, clear gem, second gem and colored gem, where the level has them, then the relic and the best time trial time. Click an icon to add or remove it. A click on the relic moves to the next tier (none, sapphire, gold, platinum); a right-click picks one. Every click is one step that Ctrl+Z undoes. Hover over an icon to see what it is and what a click does. A click on a level's name selects it.
+
 ### In a browser
 
 ```sh

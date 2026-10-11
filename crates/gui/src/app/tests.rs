@@ -398,7 +398,9 @@ fn the_unsaved_view_and_a_selected_level() {
         ..Options::default()
     }));
     harness.get_by_label("Unsaved changes");
-    harness.get_by_label("Toad Village");
+    assert_eq!(harness.state().selected, LevelId::from_key("toadvillage"));
+    // In the warp room grid and in the details.
+    assert_eq!(harness.query_all_by_label("Toad Village").count(), 2);
 }
 
 #[test]
@@ -550,4 +552,201 @@ fn sizes_in_kb() {
     assert_eq!(kib(65_000), 63);
     assert_eq!(kib(511), 0);
     assert_eq!(kib(512), 1);
+}
+
+// ------------------------------------------------------------ Crash 3 screen
+
+/// A window tall enough to show every warp room card without scrolling.
+fn tall_harness(app: App) -> Harness<'static, App> {
+    let mut harness = Harness::builder()
+        .with_size(Vec2::new(1280.0, 1400.0))
+        .build_ui_state(|ui, app: &mut App| app.show(ui), app);
+    harness.run_steps(2);
+    harness
+}
+
+fn level(key: &str) -> LevelId {
+    LevelId::from_key(key).unwrap()
+}
+
+fn history(harness: &Harness<'_, App>) -> Vec<String> {
+    doc(harness).history().map(str::to_owned).collect()
+}
+
+fn click(harness: &mut Harness<'_, App>, label: &str) {
+    harness.get_by_label(label).click();
+    harness.run_steps(2);
+}
+
+/// The expected output of a golden scenario, from the manifest.
+fn golden_sha256(name: &str) -> String {
+    let text = fs::read_to_string(repo_file("tests/golden/manifest.json")).unwrap();
+    let manifest: serde_json::Value = serde_json::from_str(&text).unwrap();
+    manifest["scenarios"][name]["sha256"]
+        .as_str()
+        .unwrap_or_else(|| panic!("{name} is not in the manifest"))
+        .to_owned()
+}
+
+fn sha256_hex(data: &[u8]) -> String {
+    use sha2::Digest as _;
+    sha2::Sha256::digest(data)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+#[test]
+fn a_crystal_click_is_one_undo_step_and_matches_the_golden_output() {
+    let mut harness = harness(opening(repo_file("saves/0019.sav")));
+    let deep_trouble = level("deeptrouble");
+    harness.get_by_label("10 / 25");
+    harness.get_by_label("19%");
+    assert!(!doc(&harness).current().crystal(deep_trouble));
+
+    click(&mut harness, "Deep Trouble: crystal");
+    assert!(doc(&harness).current().crystal(deep_trouble));
+    assert_eq!(history(&harness), ["Deep Trouble: crystal on"]);
+    // The totals follow at once, from the save as it is now.
+    harness.get_by_label("11 / 25");
+    harness.get_by_label("20%");
+    harness.get_by_label("1 / 5");
+    // The same bytes as the golden scenario of `SetCrystal` on this save.
+    let bytes = doc(&harness).to_bytes().unwrap();
+    assert_eq!(sha256_hex(&bytes), golden_sha256("ops/set_crystal_on_0019"));
+
+    press(&mut harness, Modifiers::COMMAND, Key::Z);
+    assert!(!doc(&harness).current().crystal(deep_trouble));
+    assert!(history(&harness).is_empty());
+    harness.get_by_label("10 / 25");
+    harness.get_by_label("19%");
+}
+
+#[test]
+fn every_collectible_toggle_is_one_edit() {
+    let mut harness = harness(opening(repo_file("saves/0019.sav")));
+    for (label, expected) in [
+        ("Deep Trouble: clear gem", "Deep Trouble: clear gem on"),
+        ("Deep Trouble: red gem", "Deep Trouble: red gem on"),
+        ("Bone Yard: second gem", "Bone Yard: second gem on"),
+        ("Toad Village: crystal", "Toad Village: crystal off"),
+        ("Dr. N. Tropy: defeated", "Dr. N. Tropy: defeated"),
+        ("Death Tornado Spin", "Death Tornado Spin: on"),
+        ("Hub: bonus gem", "Bonus gem: on"),
+    ] {
+        let before = history(&harness).len();
+        click(&mut harness, label);
+        let after = history(&harness);
+        assert_eq!(after.len(), before + 1, "{label}");
+        assert_eq!(after.last().unwrap(), expected, "{label}");
+    }
+    let save = doc(&harness).current();
+    assert!(save.gem(level("deeptrouble")));
+    assert!(save.colored_gem(level("deeptrouble")));
+    assert!(save.second_gem(level("boneyard")));
+    assert!(!save.crystal(level("toadvillage")));
+    assert!(save.boss_defeated(level("ntropy")));
+    assert!(save.ability(nsane::crash3::Ability::TornadoSpin));
+    assert!(save.bonus_gem());
+    // A level that was never entered is marked entered by the first edit.
+    assert!(save.entered(level("deeptrouble")));
+}
+
+#[test]
+fn the_relic_cycles_on_click_and_is_picked_on_right_click() {
+    use nsane::crash3::Relic;
+    let mut harness = harness(opening(repo_file("saves/0019.sav")));
+    let toad = level("toadvillage");
+    let relic = |h: &Harness<'_, App>| doc(h).current().relic(toad);
+    assert_eq!(relic(&harness), Some(Relic::Gold));
+    click(&mut harness, "Toad Village: relic");
+    assert_eq!(relic(&harness), Some(Relic::Platinum));
+    click(&mut harness, "Toad Village: relic");
+    assert_eq!(relic(&harness), None);
+    click(&mut harness, "Toad Village: relic");
+    assert_eq!(relic(&harness), Some(Relic::Sapphire));
+    assert_eq!(history(&harness).len(), 3);
+
+    harness
+        .get_by_label("Toad Village: relic")
+        .click_secondary();
+    harness.run_steps(2);
+    harness.get_by_label_contains("Gold (under").click();
+    harness.run_steps(2);
+    assert_eq!(relic(&harness), Some(Relic::Gold));
+    assert_eq!(
+        history(&harness).last().unwrap(),
+        "Toad Village: gold relic"
+    );
+    assert_eq!(history(&harness).len(), 4);
+}
+
+#[test]
+fn a_level_name_selects_it() {
+    let mut harness = harness(opening(repo_file("saves/0019.sav")));
+    assert_eq!(harness.state().selected, None);
+    click(&mut harness, "Deep Trouble");
+    assert_eq!(harness.state().selected, Some(level("deeptrouble")));
+    assert!(history(&harness).is_empty(), "selecting is not an edit");
+}
+
+#[test]
+fn the_secret_room_locks_follow_the_relic_count() {
+    let mut harness = tall_harness(opening(repo_file("saves/0019.sav")));
+    // One relic: every level of the secret room is locked.
+    for name in ["26 Ski Crazed", "28 Area 51?", "30 Rings of Power"] {
+        harness.get_by_label(&format!("{name}: locked"));
+    }
+    // Four more relics open level 26, and only it.
+    for key in ["underpressure", "orientexpress", "boneyard", "makinwaves"] {
+        click(&mut harness, &format!("{}: relic", level(key).name()));
+    }
+    assert_eq!(doc(&harness).current().totals().relics(), 5);
+    harness.get_by_label("26 Ski Crazed: open");
+    harness.get_by_label("27 Hang'em High: locked");
+    harness.get_by_label("28 Area 51?: locked");
+
+    let harness = tall_harness(opening(repo_file("test_saves/t6_after.sav")));
+    for name in [
+        "26 Ski Crazed",
+        "27 Hang'em High",
+        "28 Area 51?",
+        "29 Future Frenzy",
+        "30 Rings of Power",
+    ] {
+        harness.get_by_label(&format!("{name}: open"));
+    }
+}
+
+#[test]
+fn the_entrance_rows_select_their_level() {
+    let mut harness = tall_harness(opening(repo_file("saves/0019.sav")));
+    click(&mut harness, "Hang'em High (alt.)");
+    assert_eq!(harness.state().selected, Some(level("hangemhigh")));
+    click(&mut harness, "Future Frenzy (alt.)");
+    assert_eq!(harness.state().selected, Some(level("futurefrenzy")));
+    assert!(history(&harness).is_empty());
+}
+
+#[test]
+fn the_portal_glitch_shows_on_its_room() {
+    let harness = harness(opening(repo_file("test_saves/t4_crystals.sav")));
+    let message = doc(&harness)
+        .diagnostics()
+        .iter()
+        .find(|d| d.code == "portal_glitch")
+        .expect("a portal glitch")
+        .message
+        .clone();
+    // Once on Warp Room 4's card, once in the overview's list.
+    assert_eq!(harness.query_all_by_label(&message).count(), 2);
+}
+
+#[test]
+fn the_bonus_gem_badge_shows_when_it_is_due() {
+    let harness = harness(opening(repo_file("test_saves/t7_bonus_gem.sav")));
+    assert!(doc(&harness).current().bonus_gem_due());
+    harness.get_by_label("due");
+    let harness = self::harness(opening(repo_file("saves/0019.sav")));
+    assert!(harness.query_by_label("due").is_none());
 }

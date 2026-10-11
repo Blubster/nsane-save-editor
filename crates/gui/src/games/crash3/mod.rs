@@ -1,12 +1,15 @@
 //! Crash Bandicoot 3: Warped: the overview, the central area and the level
 //! details.
 
+pub mod level_row;
 mod overview;
+mod rooms;
 
 use nsane::Document;
 use nsane::crash3::LevelId;
 
 use crate::app::Action;
+use crate::theme::SPACING;
 
 /// What the Crash 3 tab keeps between frames.
 #[derive(Debug, Default)]
@@ -22,21 +25,47 @@ impl Crash3Ui {
         *self = Self::default();
     }
 
-    pub fn overview(&mut self, ui: &mut egui::Ui, doc: &Document, actions: &mut Vec<Action>) {
-        ui.heading("Overview");
-        ui.add_space(crate::theme::SPACING);
-        overview::lives(ui, doc, &mut self.lives, actions);
+    pub fn overview(
+        &mut self,
+        ui: &mut egui::Ui,
+        doc: &Document,
+        selected: &mut Option<LevelId>,
+        actions: &mut Vec<Action>,
+    ) {
+        let totals = doc.current().totals();
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, true])
+            .show(ui, |ui| {
+                ui.heading("Overview");
+                ui.add_space(SPACING);
+                overview::progress(ui, &totals);
+                ui.add_space(SPACING);
+                overview::totals(ui, doc, &totals);
+                ui.separator();
+                overview::lives(ui, doc, &mut self.lives, actions);
+                overview::bonus_gem(ui, doc, actions);
+                ui.separator();
+                overview::secret_room(ui, &totals, selected);
+                ui.separator();
+                overview::story(ui, doc);
+                ui.separator();
+                overview::diagnostics(ui, doc);
+            });
     }
 
-    pub fn central(&mut self, ui: &mut egui::Ui, _doc: &Document) {
-        ui.centered_and_justified(|ui| {
-            ui.weak("Warp rooms");
-        });
+    pub fn central(
+        &mut self,
+        ui: &mut egui::Ui,
+        doc: &Document,
+        selected: &mut Option<LevelId>,
+        actions: &mut Vec<Action>,
+    ) {
+        rooms::grid(ui, doc, selected, actions);
     }
 
     pub fn details(&mut self, ui: &mut egui::Ui, _doc: &Document, selected: Option<LevelId>) {
         ui.heading("Details");
-        ui.add_space(crate::theme::SPACING);
+        ui.add_space(SPACING);
         match selected {
             Some(level) => {
                 ui.label(egui::RichText::new(level.name()).strong());

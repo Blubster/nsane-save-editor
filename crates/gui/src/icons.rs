@@ -109,6 +109,12 @@ impl Boss {
     pub fn level(self) -> LevelId {
         BOSSES[self as usize]
     }
+
+    /// The boss whose fight `level` is, if it is one.
+    pub fn of(level: LevelId) -> Option<Boss> {
+        let i = BOSSES.iter().position(|&b| b == level)?;
+        Some(Boss::ALL[i])
+    }
 }
 
 /// Whether the save has the thing the icon stands for.
@@ -192,13 +198,26 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, state: IconState, dark: 
 /// as not applicable. The caller adds the tooltip with `on_hover_text` and
 /// acts on `clicked()`.
 pub fn icon_toggle(ui: &mut Ui, icon: Icon, on: bool, enabled: bool, size: f32) -> Response {
+    icon_toggle_named(ui, icon, icon.name(), on, enabled, size)
+}
+
+/// [`icon_toggle`] with the name screen readers and tests find it by, such
+/// as "Deep Trouble: crystal", where several of the same icon are shown.
+pub fn icon_toggle_named(
+    ui: &mut Ui,
+    icon: Icon,
+    name: &str,
+    on: bool,
+    enabled: bool,
+    size: f32,
+) -> Response {
     let sense = if enabled {
         Sense::click()
     } else {
         Sense::hover()
     };
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), sense);
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, enabled, on, icon.name()));
+    response.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, enabled, on, name));
     if ui.is_rect_visible(rect) {
         let dark = ui.visuals().dark_mode;
         let pal = theme::palette(dark);
@@ -1226,5 +1245,14 @@ mod tests {
         ] {
             assert!(!code.contains(constructor), "icons.rs uses {constructor}");
         }
+    }
+
+    #[test]
+    fn each_boss_level_has_its_symbol() {
+        for boss in Boss::ALL {
+            assert_eq!(Boss::of(boss.level()), Some(boss));
+        }
+        let toad_village = LevelId::from_key("toadvillage").unwrap();
+        assert_eq!(Boss::of(toad_village), None);
     }
 }

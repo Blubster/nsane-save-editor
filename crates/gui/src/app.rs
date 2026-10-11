@@ -802,7 +802,9 @@ impl App {
                 .resizable(true)
                 .default_size(240.0)
                 .min_size(180.0)
-                .show(ui, |ui| self.crash3.overview(ui, doc, actions));
+                .show(ui, |ui| {
+                    self.crash3.overview(ui, doc, &mut self.selected, actions)
+                });
         }
         if !narrow || self.prefs.show_details {
             egui::Panel::right("details")
@@ -811,7 +813,9 @@ impl App {
                 .min_size(200.0)
                 .show(ui, |ui| self.crash3.details(ui, doc, self.selected));
         }
-        egui::CentralPanel::default().show(ui, |ui| self.crash3.central(ui, doc));
+        egui::CentralPanel::default().show(ui, |ui| {
+            self.crash3.central(ui, doc, &mut self.selected, actions)
+        });
     }
 
     fn dialogs(&mut self, ctx: &Context) {
@@ -1090,7 +1094,9 @@ fn status(ui: &mut Ui, file: &mut OpenFile) {
         .corner_radius(theme::ROUNDING_SMALL)
         .inner_margin(Margin::symmetric(6, 1))
         .show(ui, |ui| {
-            ui.label(RichText::new(platform.name()).color(pal.text).small());
+            ui.add(
+                egui::Label::new(RichText::new(platform.name()).color(pal.text).small()).extend(),
+            );
         })
         .response
         .on_hover_text(match platform {
