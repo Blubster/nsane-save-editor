@@ -9,30 +9,39 @@ use chrono::{Datelike as _, Local, Timelike as _};
 
 /// Set when the file dialog library logs an error. It returns "no file" both
 /// when the user cancels and when no dialog could be shown (no desktop portal
-/// on a Linux session, for example); its log tells the two apart.
+/// on a Linux session, for example); its log tells the two apart. On Linux it
+/// logs the portal's error, then a warning that it falls back to `zenity`,
+/// then an error only if that fails too: the warning clears the flag, so a
+/// cancelled fallback dialog is a cancel.
 static DIALOG_FAILED: AtomicBool = AtomicBool::new(false);
 
 /// The dialog library's log target.
 const DIALOG_TARGET: &str = "rfd";
 
 /// Forwards to `env_logger` (`RUST_LOG`), and watches the dialog library's
-/// errors whatever the log level.
+/// errors and fallbacks whatever the log level.
 struct Logger {
     inner: env_logger::Logger,
 }
 
-fn is_dialog_error(metadata: &log::Metadata<'_>) -> bool {
-    metadata.level() == log::Level::Error && metadata.target().starts_with(DIALOG_TARGET)
+fn is_dialog_record(metadata: &log::Metadata<'_>) -> bool {
+    metadata.level() <= log::Level::Warn && metadata.target().starts_with(DIALOG_TARGET)
 }
 
 impl log::Log for Logger {
     fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
-        self.inner.enabled(metadata) || is_dialog_error(metadata)
+        self.inner.enabled(metadata) || is_dialog_record(metadata)
     }
 
     fn log(&self, record: &log::Record<'_>) {
-        if is_dialog_error(record.metadata()) {
-            DIALOG_FAILED.store(true, Ordering::Relaxed);
+        if is_dialog_record(record.metadata()) {
+            match record.level() {
+                log::Level::Error => DIALOG_FAILED.store(true, Ordering::Relaxed),
+                _ if record.args().to_string().contains("fallback") => {
+                    DIALOG_FAILED.store(false, Ordering::Relaxed)
+                }
+                _ => {}
+            }
         }
         self.inner.log(record);
     }
@@ -45,7 +54,7 @@ impl log::Log for Logger {
 /// Installs the logger. Call once, first thing.
 pub fn init_logger() {
     let inner = env_logger::Builder::from_default_env().build();
-    log::set_max_level(inner.filter().max(log::LevelFilter::Error));
+    log::set_max_level(inner.filter().max(log::LevelFilter::Warn));
     if log::set_boxed_logger(Box::new(Logger { inner })).is_err() {
         eprintln!("a logger was already installed");
     }
@@ -232,6 +241,21 @@ mod tests {
         });
         assert_eq!(failed, Err(DialogUnavailable));
         assert_eq!(dialog(|| None), Ok(None), "the next one starts afresh");
+        // the portal fails, the fallback dialog shows and is cancelled
+        let cancelled = dialog(|| {
+            log::error!(target: "rfd::backend::xdg_desktop_portal::portal", "OpenFile failed");
+            log::warn!(target: "rfd::backend::xdg_desktop_portal", "Using zenity fallback");
+            None
+        });
+        assert_eq!(cancelled, Ok(None));
+        // ... or the fallback fails too
+        let failed = dialog(|| {
+            log::error!(target: "rfd::backend::xdg_desktop_portal::portal", "OpenFile failed");
+            log::warn!(target: "rfd::backend::xdg_desktop_portal", "Using zenity fallback");
+            log::error!(target: "rfd::backend::xdg_desktop_portal", "Failed to pick file with zenity");
+            None
+        });
+        assert_eq!(failed, Err(DialogUnavailable));
         // other errors don't count
         let other = dialog(|| {
             log::error!(target: "eframe", "unrelated");

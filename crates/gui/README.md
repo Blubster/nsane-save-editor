@@ -25,7 +25,7 @@ On macOS, Cmd replaces Ctrl.
 
 ### Linux file dialogs
 
-The file dialogs go through the desktop portal (`xdg-desktop-portal`) over D-Bus. Where no portal is running (some minimal or WSL setups), the dialog can't open and the app says so: open files by dropping them onto the window, or with `--open`.
+The file dialogs go through the desktop portal (`xdg-desktop-portal`) over D-Bus. Where no portal is running (some minimal or WSL setups), `zenity` is used instead if it is installed. With neither, the dialog can't open and the app says so: open files by dropping them onto the window, or with `--open`.
 
 ## Command-line options (native)
 
