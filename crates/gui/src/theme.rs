@@ -103,9 +103,9 @@ pub fn lighten(c: Color32, percent: u32) -> Color32 {
 }
 
 // Collectible colours name the item, so they are the same in both themes,
-// except two: the clear gem and the platinum relic are near white, which
-// reads well on a dark card but not on a white one. The light theme draws
-// them bluer and darker, with a dark outline.
+// except the clear gem: white, as in the game, on a dark card, but bluer
+// and outlined in dark blue on a white one, where a white gem can't be told
+// from an empty slot. The platinum relic is a silver dark enough for both.
 const CRYSTAL: Swatch = Swatch::new(0xB04CE0);
 const GEM_CLEAR: Swatch = Swatch::new(0xDCEBFF);
 const GEM_CLEAR_ON_LIGHT: Swatch = Swatch::new(0x9CC9F5).outlined(0x2B5A87);
@@ -116,8 +116,7 @@ const GEM_BLUE: Swatch = Swatch::new(0x2D7FF9);
 const GEM_GREEN: Swatch = Swatch::new(0x2DBE60);
 const RELIC_SAPPHIRE: Swatch = Swatch::new(0x2F6FDB);
 const RELIC_GOLD: Swatch = Swatch::new(0xE0A526);
-const RELIC_PLATINUM: Swatch = Swatch::new(0xD7DEE6);
-const RELIC_PLATINUM_ON_LIGHT: Swatch = Swatch::new(0xB3BDC8).outlined(0x46505B);
+const RELIC_PLATINUM: Swatch = Swatch::new(0xB3BDC8).outlined(0x46505B);
 const SPARKLE: Swatch = Swatch::new(0xFFD34D);
 const ABILITY: Swatch = Swatch::new(0xF28C28);
 const LIVES: Swatch = Swatch::new(0xE5383B);
@@ -280,7 +279,7 @@ pub const LIGHT: Palette = Palette {
     gem_green: GEM_GREEN,
     relic_sapphire: RELIC_SAPPHIRE,
     relic_gold: RELIC_GOLD,
-    relic_platinum: RELIC_PLATINUM_ON_LIGHT,
+    relic_platinum: RELIC_PLATINUM,
     sparkle: SPARKLE,
     ability: ABILITY,
     lives: LIVES,
@@ -329,7 +328,6 @@ pub const DARK: Palette = Palette {
     info: Swatch::new(0x4C9AFF),
     error: Swatch::new(0xF85149),
     gem_clear: GEM_CLEAR,
-    relic_platinum: RELIC_PLATINUM,
     ..LIGHT
 };
 
