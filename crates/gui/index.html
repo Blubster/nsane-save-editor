@@ -5,7 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Save editor for Crash Bandicoot N. Sane Trilogy</title>
 
-    <link data-trunk rel="rust" data-bin="nsane-save-editor" data-wasm-opt="2" />
+    <!-- The release profile strips the module's list of WebAssembly features,
+         so wasm-opt is given the ones Rust enables by default. -->
+    <link data-trunk rel="rust" data-bin="nsane-save-editor" data-wasm-opt="2"
+        data-wasm-opt-params="--enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals --enable-reference-types --enable-multivalue" />
+    <link data-trunk rel="icon" href="assets/icon.ico" />
     <base data-trunk-public-url />
 
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="white">
