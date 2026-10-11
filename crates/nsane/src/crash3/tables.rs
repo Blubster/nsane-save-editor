@@ -434,6 +434,65 @@ pub const SECRET_ROOM: [SecretRoomLevel; 5] = [
     },
 ];
 
+/// How a level's second gem is earned (§3, "Second gems"), to show next to
+/// it. `None` for a level without a second gem.
+pub fn second_gem_hint(level: LevelId) -> Option<&'static str> {
+    if !level.level().second_gem {
+        return None;
+    }
+    Some(match level.key() {
+        "boneyard" => "red gem path",
+        "tombtime" => "purple gem path",
+        "dinomight" => "yellow gem path",
+        "sphynxinator" => "blue gem path",
+        "futurefrenzy" => "second entrance, level 29 (20 relics)",
+        "gonetomorrow" => "green gem path",
+        "buglite" => "multicolored path, needs all five colored gems",
+        "area51" | "ringsofpower" => "win the race",
+        "futuretense" => "death route, needs some of the super powers",
+        _ => unreachable!("every level with a second gem is listed"),
+    })
+}
+
+/// A level in which a colored gem opens a path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GemPath {
+    pub level: LevelId,
+    /// Where the path leads on to, when it leads to another level.
+    pub leads_to: Option<LevelId>,
+}
+
+const fn path(key: &str) -> GemPath {
+    GemPath {
+        level: id(key),
+        leads_to: None,
+    }
+}
+
+/// The levels a colored gem opens a path in (§3, "Colored gems and their
+/// paths"). Bug Lite's multicolored path needs all five.
+pub fn colored_gem_opens(color: GemColor) -> &'static [GemPath] {
+    const BUG_LITE: GemPath = path("buglite");
+    const RED: [GemPath; 2] = [path("boneyard"), BUG_LITE];
+    const YELLOW: [GemPath; 2] = [
+        GemPath {
+            leads_to: Some(id("eggipusrex")),
+            ..path("dinomight")
+        },
+        BUG_LITE,
+    ];
+    const PURPLE: [GemPath; 2] = [path("tombtime"), BUG_LITE];
+    const BLUE: [GemPath; 2] = [path("sphynxinator"), BUG_LITE];
+    const GREEN: [GemPath; 2] = [path("gonetomorrow"), BUG_LITE];
+    match color {
+        GemColor::Red => &RED,
+        GemColor::Yellow => &YELLOW,
+        GemColor::Purple => &PURPLE,
+        GemColor::Blue => &BLUE,
+        GemColor::Green => &GREEN,
+    }
+}
+
 /// Relic thresholds in centiseconds: a time trial time **under** a threshold
 /// earns that relic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -630,6 +689,22 @@ pub mod bit {
     pub const RELICS: u32 = RELIC_SAPPHIRE | RELIC_GOLD | RELIC_PLATINUM;
     /// Every bit the editor knows. The others are never observed and are kept.
     pub const KNOWN: u32 = GEM_CLEAR | GEM_SECOND | CRYSTAL | BOSS_DEFEATED | RELICS | GEM_COLORED;
+
+    /// Our name of each bit, as `docs/FORMAT.md` lists them.
+    pub const NAMES: [(u32, &str); 12] = [
+        (GEM_CLEAR, "GEM_CLEAR"),
+        (GEM_BLUE, "GEM_BLUE"),
+        (GEM_GREEN, "GEM_GREEN"),
+        (GEM_PURPLE, "GEM_PURPLE"),
+        (GEM_RED, "GEM_RED"),
+        (GEM_YELLOW, "GEM_YELLOW"),
+        (GEM_SECOND, "GEM_SECOND"),
+        (CRYSTAL, "CRYSTAL"),
+        (BOSS_DEFEATED, "BOSS_DEFEATED"),
+        (RELIC_PLATINUM, "RELIC_PLATINUM"),
+        (RELIC_SAPPHIRE, "RELIC_SAPPHIRE"),
+        (RELIC_GOLD, "RELIC_GOLD"),
+    ];
 }
 
 /// Initials of an empty leaderboard slot.

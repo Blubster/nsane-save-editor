@@ -187,3 +187,50 @@ fn flag_keys_read_back() {
     }
     assert_eq!(relic_counted_level("Nowhere_RelicCounted"), None);
 }
+
+#[test]
+fn every_second_gem_and_colored_gem_has_its_hint() {
+    use nsane::crash3::GemColor;
+    use nsane::crash3::tables::{bit, colored_gem_opens, second_gem_hint};
+    for level in LevelId::all() {
+        assert_eq!(
+            second_gem_hint(level).is_some(),
+            level.level().second_gem,
+            "{}",
+            level.key()
+        );
+    }
+    let bug_lite = LevelId::from_key("buglite").unwrap();
+    for color in GemColor::ALL {
+        let opens = colored_gem_opens(color);
+        assert!(!opens.is_empty(), "{color:?}");
+        // Bug Lite's multicolored path needs every gem.
+        assert!(opens.iter().any(|p| p.level == bug_lite), "{color:?}");
+        for path in opens {
+            assert!(path.level.level().second_gem, "{}", path.level.key());
+            // The gem's own path is the one the second gem hint names.
+            if path.level != bug_lite {
+                let hint = second_gem_hint(path.level).unwrap();
+                assert_eq!(hint, format!("{} gem path", color.key()), "{color:?}");
+            }
+        }
+    }
+    // Every "<color> gem path" hint is listed in that gem's paths.
+    for level in LevelId::all() {
+        if let Some(color) = second_gem_hint(level)
+            .and_then(|h| h.strip_suffix(" gem path"))
+            .and_then(GemColor::from_key)
+        {
+            assert!(colored_gem_opens(color).iter().any(|p| p.level == level));
+        }
+    }
+    let yellow = colored_gem_opens(GemColor::Yellow);
+    assert_eq!(yellow[0].leads_to, LevelId::from_key("eggipusrex"));
+
+    let mut all = 0;
+    for (b, name) in bit::NAMES {
+        assert_eq!(b.count_ones(), 1, "{name}");
+        all |= b;
+    }
+    assert_eq!(all, bit::KNOWN);
+}
