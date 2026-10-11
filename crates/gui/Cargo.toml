@@ -28,6 +28,11 @@ js-sys.workspace = true
 wasm-bindgen-futures.workspace = true
 web-sys.workspace = true
 
+# The icon and version information of the Windows executable. Build
+# dependencies follow the host, and Windows builds are made on Windows.
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1.31"
+
 [dev-dependencies]
 egui_kittest.workspace = true
 serde_json.workspace = true

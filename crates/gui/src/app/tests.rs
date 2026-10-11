@@ -1712,3 +1712,30 @@ fn the_convert_view_picks_the_template() {
     );
     harness.get_by_label("No game data lost: the converted save reads back the same.");
 }
+
+#[test]
+fn the_about_dialog_names_the_version_and_the_license() {
+    let mut harness = harness(app(Options::default()));
+    click(&mut harness, "⚙");
+    click(&mut harness, "About…");
+    assert_eq!(harness.state().dialog, Some(Dialog::About));
+    harness.get_by_label(&format!("Version {VERSION} · MIT license"));
+    harness.get_by_label(DISCLAIMER);
+    harness.get_by_label(PRIVACY);
+    // Shortcuts wait while it is open.
+    press(&mut harness, Modifiers::COMMAND, Key::O);
+    assert_eq!(harness.state().dialog, Some(Dialog::About));
+    harness.key_press(Key::Escape);
+    harness.run_steps(2);
+    assert_eq!(harness.state().dialog, None);
+
+    let harness = harness_with_view(View::About);
+    assert_eq!(harness.state().dialog, Some(Dialog::About));
+}
+
+fn harness_with_view(view: View) -> Harness<'static, App> {
+    harness(app(Options {
+        view: Some(view),
+        ..Options::default()
+    }))
+}

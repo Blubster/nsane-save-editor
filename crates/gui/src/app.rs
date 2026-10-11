@@ -24,6 +24,17 @@ use crate::prefs::Prefs;
 use crate::theme;
 
 pub const APP_TITLE: &str = "Save editor for Crash Bandicoot N. Sane Trilogy";
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const LICENSE: &str = env!("CARGO_PKG_LICENSE");
+pub const DISCLAIMER: &str = "Fan-made tool, not affiliated with or endorsed by Activision or \
+                              Vicarious Visions. Crash Bandicoot is a trademark of Activision.";
+#[cfg(not(target_arch = "wasm32"))]
+pub const PRIVACY: &str = "No data leaves your computer: saves are read and written on it, \
+                           and the app makes no network connection.";
+#[cfg(target_arch = "wasm32")]
+pub const PRIVACY: &str = "No data leaves your computer: the save is read and edited in this \
+                           page, and saving downloads it from the page itself. Nothing is \
+                           uploaded.";
 /// Names the settings folder (and the window, for the desktop).
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))] // the web keeps settings per site
 pub const APP_ID: &str = "nsane-save-editor";
@@ -136,6 +147,7 @@ enum Dialog {
     /// The name to download the save under.
     #[cfg(target_arch = "wasm32")]
     DownloadAs(String),
+    About,
 }
 
 /// The game tabs. A save holds all three games.
@@ -338,6 +350,7 @@ impl App {
                 }
             }
             Some(View::Diagnostics) => app.crash3.open_diagnostics(),
+            Some(View::About) => app.dialog = Some(Dialog::About),
             Some(View::Convert) => {
                 app.open_convert();
                 #[cfg(not(target_arch = "wasm32"))]
@@ -1197,6 +1210,10 @@ impl App {
             {
                 self.prefs.skip_save_review = !review;
             }
+            ui.separator();
+            if ui.button("About…").clicked() {
+                self.dialog = Some(Dialog::About);
+            }
         })
         .response
         .on_hover_text("Settings");
@@ -1372,6 +1389,30 @@ impl App {
                     ui.label(message.as_str());
                     ui.add_space(theme::SPACING);
                     if ui.button("OK").clicked()
+                        || ui.input(|i| i.key_pressed(Key::Escape) || i.key_pressed(Key::Enter))
+                    {
+                        close = true;
+                    }
+                });
+            }
+            Dialog::About => {
+                Modal::new(Id::new("about")).show(ctx, |ui| {
+                    ui.set_max_width(420.0);
+                    ui.horizontal(|ui| {
+                        static_icon(ui, Icon::Crystal, theme::ICON_XLARGE);
+                        ui.vertical(|ui| {
+                            ui.heading(APP_TITLE);
+                            ui.label(format!("Version {VERSION} · {LICENSE} license"));
+                        });
+                    });
+                    ui.add_space(theme::SPACING);
+                    ui.label(PRIVACY);
+                    ui.add_space(theme::SPACING / 2.0);
+                    ui.label("Keep a copy of your saves before editing them.");
+                    ui.add_space(theme::SPACING / 2.0);
+                    ui.label(RichText::new(DISCLAIMER).weak());
+                    ui.add_space(theme::SPACING);
+                    if ui.button("Close").clicked()
                         || ui.input(|i| i.key_pressed(Key::Escape) || i.key_pressed(Key::Enter))
                     {
                         close = true;

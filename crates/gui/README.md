@@ -29,9 +29,12 @@ Saving unsaved changes first shows a review: every change since the file was ope
 cd crates/gui
 trunk serve                 # http://127.0.0.1:8080
 trunk build --release       # static files in crates/gui/dist
+trunk build --release --public-url /nsane-save-editor/   # served from that sub-path
 ```
 
 The file never leaves the browser. Open a save with **Open** or by dropping it onto the page. **Save** downloads the edited save under its name, and **Save as** asks for another name first; the opened file is left as it was, so there is no backup to make. The browser may add a number to a downloaded name that already exists (`ALCHEMYXSAVE_8 (1).sav`): the PC game only reads `ALCHEMYXSAVE_<n>.sav`, so rename it. While there are unsaved changes, the browser asks before the tab is closed or reloaded.
+
+The settings menu (⚙) also opens **About**: the version, the license, and what the app does with your files.
 
 ### Settings
 
@@ -68,12 +71,13 @@ The file dialogs go through the desktop portal (`xdg-desktop-portal`) over D-Bus
 | `--open FILE.sav` | Open a save at start. |
 | `--apply EDITS.json` | Apply edits to it at start, one undo step each: a JSON list of edit ops, as in `tests/golden/scenarios.json`. |
 | `--select LEVEL` | Select a level by its key (`toadvillage`, `deeptrouble`, …). |
-| `--view NAME` | Set up a state at start: `unsaved` (the question asked before unsaved changes are lost), `invalid-time` (a refused time typed for the selected level), `progress` (the Progress tab), `unlock-dialog` (its dialog for the first locked warp room), `cutscenes` (the Progress tab scrolled to the story scenes), `preset-108` and `preset-story3` (the dialogs of those presets), `diagnostics` (the diagnostics panel), `save-review` (the review shown before saving; nothing is written), `convert` (the conversion dialog; nothing is written). |
+| `--view NAME` | Set up a state at start: `unsaved` (the question asked before unsaved changes are lost), `invalid-time` (a refused time typed for the selected level), `progress` (the Progress tab), `unlock-dialog` (its dialog for the first locked warp room), `cutscenes` (the Progress tab scrolled to the story scenes), `preset-108` and `preset-story3` (the dialogs of those presets), `diagnostics` (the diagnostics panel), `save-review` (the review shown before saving; nothing is written), `convert` (the conversion dialog; nothing is written), `about` (the About dialog). |
 | `--template FILE.sav` | The template picked in `--view convert`. |
 | `--theme light\|dark` | Force a theme instead of following the system. |
 | `--size WxH` | Inner window size in points, for example `1280x800`. |
 | `--maximized` | Start maximized. |
 | `--icon-gallery` | Show every icon in every state and size instead of the editor. |
+| `--export-icon DIR` | Write the app icon into `DIR`, then quit: `icon-<size>.png` from 16 to 256 pixels and `icon.ico`. |
 | `--screenshot FILE.png` | Render a few frames, capture the window to a PNG, then quit. |
 
 ### Screenshots
@@ -94,6 +98,16 @@ nsane-save-editor --open saves/0019.sav \
 ```
 
 The capture is the window's own rendering, at the display's scale, without the window frame.
+
+## App icon
+
+The icon is the crystal of the icon set, rendered by the app itself. `crates/gui/assets/` keeps the PNG files and `icon.ico`: the Windows executable embeds the `.ico` (`build.rs`), the web build uses it as its favicon, and the window shows the 256-pixel PNG. After changing the crystal, write them again:
+
+```sh
+cargo run -p gui -- --export-icon crates/gui/assets
+```
+
+A test fails while the files differ from the drawing.
 
 ## Tests
 

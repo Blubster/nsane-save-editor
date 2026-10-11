@@ -30,11 +30,13 @@ pub enum View {
     SaveReview,
     /// The dialog that converts the save to the other platform.
     Convert,
+    /// The About dialog.
+    About,
 }
 
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))] // set from the command line
 impl View {
-    pub const ALL: [View; 10] = [
+    pub const ALL: [View; 11] = [
         View::Unsaved,
         View::InvalidTime,
         View::Progress,
@@ -45,6 +47,7 @@ impl View {
         View::Diagnostics,
         View::SaveReview,
         View::Convert,
+        View::About,
     ];
 
     pub fn name(self) -> &'static str {
@@ -59,6 +62,7 @@ impl View {
             View::Diagnostics => "diagnostics",
             View::SaveReview => "save-review",
             View::Convert => "convert",
+            View::About => "about",
         }
     }
 
@@ -71,6 +75,9 @@ impl View {
 pub struct Options {
     /// Show the icon gallery instead of the editor.
     pub icon_gallery: bool,
+    /// Write the app icon files into this folder, then quit.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub export_icon: Option<PathBuf>,
     /// `Some(true)` forces the dark theme, `Some(false)` the light one;
     /// `None` follows the system.
     pub dark: Option<bool>,
@@ -122,9 +129,11 @@ usage: nsane-save-editor [options]
                          dialogs), diagnostics (the diagnostics panel),
                          save-review (the review shown before saving),
                          convert (the dialog that converts the save to
-                         the other platform)
+                         the other platform), about (the About dialog)
   --template FILE.sav    the template picked in --view convert
   --icon-gallery         show every icon in every state and size
+  --export-icon DIR      write the app icon (PNG files and icon.ico) into
+                         DIR, then quit
   --theme light|dark     force a theme instead of following the system
   --size WxH             inner window size in points, e.g. 1280x800
   --maximized            start with the window maximized
@@ -156,6 +165,7 @@ impl Options {
                     })?);
                 }
                 "--icon-gallery" => options.icon_gallery = true,
+                "--export-icon" => options.export_icon = Some(value("--export-icon")?.into()),
                 "--theme" => {
                     options.dark = Some(match value("--theme")?.as_str() {
                         "light" => false,
@@ -233,6 +243,8 @@ mod tests {
             "edits.json",
             "--template",
             "saves/ALCHEMYXSAVE_8.sav",
+            "--export-icon",
+            "assets",
             "--select",
             "toadvillage",
             "--view",
@@ -244,6 +256,7 @@ mod tests {
         assert_eq!(o.open, Some("saves/0019.sav".into()));
         assert_eq!(o.apply, Some("edits.json".into()));
         assert_eq!(o.template, Some("saves/ALCHEMYXSAVE_8.sav".into()));
+        assert_eq!(o.export_icon, Some("assets".into()));
         assert_eq!(o.select, LevelId::from_key("toadvillage"));
         assert_eq!(o.view, Some(View::Unsaved));
         assert_eq!(o.screenshots.len(), 1);
@@ -277,6 +290,7 @@ mod tests {
         assert!(parse(&["--size", "0x10"]).is_err());
         assert!(parse(&["--frobnicate"]).is_err());
         assert!(parse(&["--open"]).is_err());
+        assert!(parse(&["--export-icon"]).is_err());
         assert!(parse(&["--select", "nowhere"]).is_err());
         assert_eq!(
             parse(&["--view", "invalid-time"]).unwrap().view,

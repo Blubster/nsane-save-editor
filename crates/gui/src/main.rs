@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // no console window on Windows in release
 
 mod app;
+#[cfg(not(target_arch = "wasm32"))]
+mod app_icon;
 mod gallery;
 mod games;
 mod icons;
@@ -27,11 +29,19 @@ fn main() -> eframe::Result {
             std::process::exit(2);
         }
     };
+    if let Some(dir) = &options.export_icon {
+        if let Err(e) = app_icon::export(dir) {
+            eprintln!("can't write the icon into {}: {e}", dir.display());
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title(app::APP_TITLE)
             // names the settings folder, and the window for the desktop
             .with_app_id(app::APP_ID)
+            .with_icon(app_icon::window_icon())
             .with_inner_size(options.size.unwrap_or([1024.0, 720.0]))
             .with_min_inner_size([480.0, 320.0])
             .with_maximized(options.maximized),

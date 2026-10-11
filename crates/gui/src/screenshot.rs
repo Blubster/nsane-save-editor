@@ -3,8 +3,6 @@
 //! window, switching theme between them.
 
 use std::collections::VecDeque;
-use std::fs::File;
-use std::io::BufWriter;
 use std::path::Path;
 
 use egui::{ColorImage, Context, Event, UserData, ViewportCommand};
@@ -84,16 +82,14 @@ impl Screenshot {
 
 fn write_png(path: &Path, image: &ColorImage) -> Result<(), Box<dyn std::error::Error>> {
     let [w, h] = image.size;
-    let file = BufWriter::new(File::create(path)?);
-    let mut encoder = png::Encoder::new(file, w as u32, h as u32);
-    encoder.set_color(png::ColorType::Rgba);
-    encoder.set_depth(png::BitDepth::Eight);
-    let mut writer = encoder.write_header()?;
     let rgba: Vec<u8> = image
         .pixels
         .iter()
         .flat_map(|c| c.to_srgba_unmultiplied())
         .collect();
-    writer.write_image_data(&rgba)?;
+    std::fs::write(
+        path,
+        crate::app_icon::encode_png(w as u32, h as u32, &rgba)?,
+    )?;
     Ok(())
 }
