@@ -515,19 +515,74 @@ fn pc_file_name() {
     let doc = Document::open(&data, None).unwrap();
     assert_eq!(doc.diagnostics(), []);
 
-    let mut doc = Document::open(&data, Some("foo.sav".to_owned())).unwrap();
-    let d = the(&doc, "pc_file_name", None);
-    assert_eq!(d.severity, Severity::Info);
-    assert!(d.message.contains("ALCHEMYXSAVE_<n>.sav"));
-    assert_eq!(d.fix, None);
+    for name in ["foo.sav", "MACK_8.sav", "ALCHEMYXSAVE_08.sav"] {
+        let doc = Document::open(&data, Some(name.to_owned())).unwrap();
+        let d = the(&doc, "pc_file_name", None);
+        assert_eq!(d.severity, Severity::Info);
+        assert!(d.message.contains("ALCHEMYXSAVE_<n>.sav"), "{}", d.message);
+        assert!(
+            d.message
+                .contains("ALCHEMYXSAVE_8.sav to ALCHEMYXSAVE_11.sav for Crash 3"),
+            "{}",
+            d.message
+        );
+        assert_eq!(d.fix, None);
+    }
     // Saving under a valid name refreshes the diagnostics.
-    doc.mark_saved(Some("ALCHEMYXSAVE_3.sav".to_owned()));
+    let mut doc = Document::open(&data, Some("foo.sav".to_owned())).unwrap();
+    doc.mark_saved(Some("ALCHEMYXSAVE_11.sav".to_owned()));
     assert_eq!(doc.diagnostics(), []);
+}
 
-    // A Switch save can have any name.
-    let doc = Document::open(&read("saves/0019.sav"), Some("foo.sav".to_owned())).unwrap();
-    assert_eq!(doc.platform(), Platform::Switch);
-    assert_eq!(doc.diagnostics(), []);
+/// Both versions keep one file per save slot, 4 slots per game: a Crash 3
+/// save is expected in slots 8–11.
+#[test]
+fn save_slots() {
+    for (rel, name, message) in [
+        (
+            "saves/ALCHEMYXSAVE_8.sav",
+            "ALCHEMYXSAVE_2.sav",
+            "ALCHEMYXSAVE_2.sav is the file of save slot 2, one of the Crash Bandicoot slots. \
+             The Crash 3 slots are ALCHEMYXSAVE_8.sav to ALCHEMYXSAVE_11.sav.",
+        ),
+        (
+            "saves/0019.sav",
+            "mack_5.sav",
+            "MACK_5.sav is the file of save slot 5, one of the Crash 2: Cortex Strikes Back \
+             slots. The Crash 3 slots are MACK_8.sav to MACK_11.sav.",
+        ),
+        (
+            "saves/ALCHEMYXSAVE_8.sav",
+            "ALCHEMYXSAVE_12.sav",
+            "ALCHEMYXSAVE_12.sav is not the file of a save slot: the game has slots 0 to 11. \
+             The Crash 3 slots are ALCHEMYXSAVE_8.sav to ALCHEMYXSAVE_11.sav.",
+        ),
+    ] {
+        let doc = Document::open(&read(rel), Some(name.to_owned())).unwrap();
+        let d = the(&doc, "save_slot", None);
+        assert_eq!(d.severity, Severity::Info);
+        assert_eq!(d.message, message);
+        assert_eq!(doc.diagnostics().len(), 1, "{name}");
+    }
+}
+
+#[test]
+fn switch_file_name() {
+    let data = read("saves/0019.sav");
+    // A save exported from the Switch can have any name, or its own.
+    for name in ["foo.sav", "0019.sav", "MACK_8.sav", "MACK_11.sav"] {
+        let doc = Document::open(&data, Some(name.to_owned())).unwrap();
+        assert_eq!(doc.platform(), Platform::Switch);
+        assert_eq!(doc.diagnostics(), [], "{name}");
+    }
+    // A PC name is likely a mix-up.
+    let doc = Document::open(&data, Some("ALCHEMYXSAVE_8.sav".to_owned())).unwrap();
+    let d = the(&doc, "switch_file_name", None);
+    assert_eq!(d.severity, Severity::Info);
+    assert!(
+        d.message
+            .ends_with("the Crash 3 saves are MACK_8.sav to MACK_11.sav.")
+    );
 }
 
 #[test]

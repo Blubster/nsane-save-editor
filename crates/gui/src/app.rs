@@ -16,7 +16,7 @@ use nsane::{Document, OpenError};
 
 use crate::gallery::Gallery;
 use crate::games::crash3::{
-    Convert, ConvertRequest, Crash3Ui, Preset, SaveReview, Written, other_platform, save_blocker,
+    Convert, ConvertRequest, Crash3Ui, Preset, SaveReview, Written, save_blocker,
 };
 use crate::icons::{self, Icon, IconState};
 use crate::options::{Options, View};
@@ -716,7 +716,7 @@ impl App {
     /// Opens the dialog that converts the open save to the other platform.
     fn open_convert(&mut self) {
         if let Some(file) = &self.file {
-            self.convert = Some(Convert::new(other_platform(file.doc.platform())));
+            self.convert = Some(Convert::new(file.doc.platform().other()));
         }
     }
 
@@ -1051,7 +1051,7 @@ impl App {
                         actions.push(Action::SaveAs);
                     }
                     if let Some(file) = &self.file {
-                        let target = other_platform(file.doc.platform());
+                        let target = file.doc.platform().other();
                         if ui
                             .button(format!("Convert to {target}…"))
                             .on_hover_text(format!(
@@ -1719,7 +1719,7 @@ fn drop_zone(ui: &mut Ui) -> egui::Response {
             pal.text_weak,
         ),
         (
-            "Switch: a save exported from the console.",
+            "Switch: MACK_<n>.sav, exported from the console.",
             theme::FONT_BODY,
             pal.text_weak,
         ),

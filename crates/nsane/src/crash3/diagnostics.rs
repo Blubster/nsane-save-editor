@@ -10,6 +10,7 @@ use super::model::{Crash3Save, Warning};
 use super::presets::matching_time;
 use super::tables::{BOSSES, Kind, LevelId, Relic, relic_counted_key};
 use super::time::{format_time, relic_for_time};
+use crate::slot::{CRASH3_SLOTS, file_name as slot_file_name, parse_file_name, slot_game};
 use crate::{Platform, SizeReport};
 
 /// Above this share of a Switch file, the size is worth mentioning.
@@ -84,9 +85,7 @@ pub fn diagnostics(
 ) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     out.extend(switch_size(size));
-    if platform == Platform::Pc {
-        out.extend(file_name.and_then(pc_file_name));
-    }
+    out.extend(file_name.and_then(|name| file_name_diagnostic(name, platform)));
     out.extend(save.warnings().into_iter().map(|w| warning(save, w)));
     if save.bonus_gem_due() {
         out.push(bonus_gem_due(save));
@@ -141,24 +140,54 @@ fn switch_size(size: SizeReport) -> Option<Diagnostic> {
 /// Whether the last component of `name` is `ALCHEMYXSAVE_<n>.sav`. Case is
 /// ignored, as Windows file names ignore it.
 pub fn is_pc_save_name(name: &str) -> bool {
-    let base = name.rsplit(['/', '\\']).next().unwrap_or(name);
-    base.to_ascii_lowercase()
-        .strip_prefix("alchemyxsave_")
-        .and_then(|rest| rest.strip_suffix(".sav"))
-        .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+    matches!(parse_file_name(name), Some((Platform::Pc, _)))
 }
 
-fn pc_file_name(name: &str) -> Option<Diagnostic> {
-    (!is_pc_save_name(name)).then(|| {
-        Diagnostic::new(
-            Severity::Info,
+/// What the file name says about where the game will find the save. A PC
+/// save must be named after its slot; a save exported from the Switch can
+/// have any name while it is kept elsewhere.
+fn file_name_diagnostic(name: &str, platform: Platform) -> Option<Diagnostic> {
+    let crash3_files = format!(
+        "{} to {}",
+        slot_file_name(platform, *CRASH3_SLOTS.start()),
+        slot_file_name(platform, *CRASH3_SLOTS.end())
+    );
+    let (code, message) = match (platform, parse_file_name(name)) {
+        (_, Some((p, n))) if p == platform => {
+            if CRASH3_SLOTS.contains(&n) {
+                return None;
+            }
+            let file = slot_file_name(platform, n);
+            let message = match slot_game(n) {
+                Some(game) => format!(
+                    "{file} is the file of save slot {n}, one of the {game} slots. The Crash 3 \
+                     slots are {crash3_files}."
+                ),
+                None => format!(
+                    "{file} is not the file of a save slot: the game has slots 0 to 11. The \
+                     Crash 3 slots are {crash3_files}."
+                ),
+            };
+            ("save_slot", message)
+        }
+        (Platform::Pc, _) => (
             "pc_file_name",
-            None,
-            "The PC game only loads files named ALCHEMYXSAVE_<n>.sav. Rename the file before \
-             copying it to the game's save folder."
-                .to_owned(),
-        )
-    })
+            format!(
+                "The PC game only loads files named ALCHEMYXSAVE_<n>.sav, after the save slot: \
+                 {crash3_files} for Crash 3. Rename the file before copying it to the game's \
+                 save folder."
+            ),
+        ),
+        (Platform::Switch, Some((Platform::Pc, _))) => (
+            "switch_file_name",
+            format!(
+                "This Switch save is named like a PC save. On the console, the Crash 3 saves \
+                 are {crash3_files}."
+            ),
+        ),
+        (Platform::Switch, _) => return None,
+    };
+    Some(Diagnostic::new(Severity::Info, code, None, message))
 }
 
 fn warning(save: &Crash3Save, w: Warning) -> Diagnostic {

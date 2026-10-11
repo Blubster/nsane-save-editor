@@ -3,13 +3,14 @@
 //!
 //! [`Document`] holds an open save with its undo history, and [`diff`]
 //! compares two saves in game terms. [`transfer`] converts a save between
-//! the Switch and PC layouts.
+//! the Switch and PC layouts, and [`slot`] names the files of the save slots.
 
 mod backup;
 pub mod crash3;
 pub mod diff;
 mod document;
 mod error;
+pub mod slot;
 pub mod transfer;
 
 pub use backup::backup_path;

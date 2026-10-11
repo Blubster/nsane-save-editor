@@ -26,7 +26,7 @@ This is the format reference for the editor. The code and the other documents of
 
 | | Switch | PC |
 |---|---|---|
-| File name | Any (chosen by the save manager used to export it) | `ALCHEMYXSAVE_<n>.sav` |
+| File name | `MACK_<n>.sav` on the console, `<n>` being the save slot (below). The save manager used here exports it under that name; the copies in `saves/` were renamed `0001.sav`… for storage. | `ALCHEMYXSAVE_<n>.sav`, `<n>` being the save slot (below) |
 | Size | Always **153,600 bytes**: the content, then zero padding (every Switch save in `saves/`) | **Exactly the content**, with no padding: 64,781 bytes for a fresh game (`saves/ALCHEMYXSAVE_8.sav`) |
 | Container | Alchemy IGB, version `0xB400000C` | Same |
 | Meta fields (type registry) | 821 | 860: the PC registry has extra rendering and input types |
@@ -39,6 +39,7 @@ This is the format reference for the editor. The code and the other documents of
 - **PC.** An edited file is written at its new length. A full 108% edit grows the fresh save from 64,781 to 68,318 bytes. PC1 (same size) and PC2 (grown) both loaded in game.
 - **Converting between platforms.** The game data maps one to one by meaning (zone path, variable name, flag key, summary key), not by object id. The editor copies it into a save of the target platform (a "template") and keeps the template's own container: type registry, ids, "no reference" values, bool upper bytes and padding. Both fresh saves convert to each other byte for byte. A converted save has not been loaded in game yet.
 - **All three games are in one file.** Every save holds 116 zone sessions (`crash1/…`, `crash2/…`, `crash3/…`, `whiterooms/…`) and the variables of the three games. Only Crash 3 is decoded here.
+- **Save slots.** Each game has 4 save slots, and each slot is one file numbered `<n>` = 0 to 11, the same on both platforms: 0–3 for Crash Bandicoot, 4–7 for Crash 2 and 8–11 for Crash 3 (`MACK_8.sav`… `MACK_11.sav`, `ALCHEMYXSAVE_8.sav`… `ALCHEMYXSAVE_11.sav`). Observed on the PC and on the Switch by looking at the files each slot writes. `saves/ALCHEMYXSAVE_8.sav` is the first Crash 3 slot. What the game does with a Crash 3 save placed in another game's slot has not been tested. On the PC used here, the save files are in `%APPDATA%\Game`.
 
 ## 2. Container: Alchemy IGB
 

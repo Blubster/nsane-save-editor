@@ -1618,14 +1618,14 @@ fn converting_0019_to_pc_and_back() {
     assert_eq!(doc(&harness).platform(), nsane::Platform::Pc);
     assert_eq!(doc(&harness).file_name(), Some("ALCHEMYXSAVE_8.sav"));
 
-    // Back to Switch with the built-in template. The suggested name is the
-    // source's, but not over the open PC save itself.
+    // Back to Switch with the built-in template: the suggested name is the
+    // Switch file of the source's slot.
     open_dialog(&mut harness, "Convert to Switch…");
     settle_click(&mut harness, "Built-in new-game template");
     harness.get_by_label("No game data lost: the converted save reads back the same.");
     let back = dir.join("back.sav");
     let start = click_with_dialog(&mut harness, "Convert…", back.clone());
-    assert_eq!(start, dir.join("ALCHEMYXSAVE_8_switch.sav"));
+    assert_eq!(start, dir.join("MACK_8.sav"));
     harness.get_by_label("Converted to Switch");
     harness.get_by_label_contains(&format!("Saved {}", back.display()));
     assert_eq!(backups(&dir).len(), 1, "a new file has nothing to back up");

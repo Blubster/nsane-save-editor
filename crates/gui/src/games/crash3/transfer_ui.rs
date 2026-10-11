@@ -14,6 +14,7 @@ use egui::{Button, Grid, Id, Key, Modal, RichText, ScrollArea, Ui};
 use nsane::crash3::{Crash3Save, Totals};
 use nsane::diff::{Change, diff};
 use nsane::igb::IgbError;
+use nsane::slot::{CRASH3_SLOTS, crash3_slot, file_name};
 use nsane::transfer::{Role, TransferError, VERIFIED_IN_GAME, bundled_template_save, transfer};
 use nsane::{Document, Platform};
 
@@ -27,38 +28,30 @@ const DIALOG_WIDTH: f32 = 520.0;
 /// The tallest the list of differences gets before it scrolls.
 const DIFFERENCES_HEIGHT: f32 = 160.0;
 
-const PC_PREFIX: &str = "ALCHEMYXSAVE_";
-const PC_SUFFIX: &str = ".sav";
-/// The name suggested for a PC save when the template's name gives none.
-const PC_DEFAULT_NAME: &str = "ALCHEMYXSAVE_0.sav";
-
-const PC_NAMING: &str = "The PC game loads files named ALCHEMYXSAVE_<n>.sav.";
-
-/// The platform a save of `platform` converts to.
-pub fn other(platform: Platform) -> Platform {
-    match platform {
-        Platform::Switch => Platform::Pc,
-        Platform::Pc => Platform::Switch,
-    }
-}
-
-/// Whether the PC game would load a file named `name`.
-pub fn is_pc_name(name: &str) -> bool {
-    name.strip_prefix(PC_PREFIX)
-        .and_then(|rest| rest.strip_suffix(PC_SUFFIX))
-        .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
-}
-
-/// The file name to write the converted save under. To PC, the template's
-/// own name when the game would load it, so that writing over the template
-/// replaces that slot; a Switch save keeps the source's name.
+/// The file name to write the converted save under: the file of a Crash 3
+/// save slot (`docs/FORMAT.md` §1). The template's own name when it is one,
+/// so that writing over the template replaces that slot; else the slot of
+/// the source's name; else the first Crash 3 slot.
 pub fn suggested_name(target: Platform, template_name: Option<&str>, source_name: &str) -> String {
-    match target {
-        Platform::Pc => template_name
-            .filter(|n| is_pc_name(n))
-            .unwrap_or(PC_DEFAULT_NAME)
-            .to_owned(),
-        Platform::Switch => source_name.to_owned(),
+    let slot = template_name
+        .and_then(|name| crash3_slot(name, target))
+        .or_else(|| crash3_slot(source_name, target.other()))
+        .unwrap_or(*CRASH3_SLOTS.start());
+    file_name(target, slot)
+}
+
+/// How the game names the Crash 3 files on `platform`.
+fn naming(platform: Platform) -> String {
+    let files = format!(
+        "{} to {}",
+        file_name(platform, *CRASH3_SLOTS.start()),
+        file_name(platform, *CRASH3_SLOTS.end())
+    );
+    match platform {
+        Platform::Pc => format!("The PC game keeps one file per save slot: {files} for Crash 3."),
+        Platform::Switch => {
+            format!("On the console, the game keeps one file per save slot: {files} for Crash 3.")
+        }
     }
 }
 
@@ -538,19 +531,13 @@ impl Convert {
         #[cfg(not(target_arch = "wasm32"))]
         let name = {
             ui.label(format!("Suggested file name: {name}"));
-            match target {
-                Platform::Pc => wrapped_weak(
-                    ui,
-                    format!(
-                        "{PC_NAMING} To replace a slot, overwrite the file you picked as \
-                         template; a backup is made."
-                    ),
+            wrapped_weak(
+                ui,
+                format!(
+                    "{} To replace a slot, write over its file; a backup is made.",
+                    naming(target)
                 ),
-                Platform::Switch => wrapped_weak(
-                    ui,
-                    "Choose where to save it next. A file it replaces is backed up.",
-                ),
-            }
+            );
             name
         };
         #[cfg(target_arch = "wasm32")]
@@ -560,15 +547,14 @@ impl Convert {
                 ui.label("Download as");
                 ui.text_edit_singleline(&mut name);
             });
-            if target == Platform::Pc {
-                wrapped_weak(
-                    ui,
-                    format!(
-                        "{PC_NAMING} To replace a slot, put the download in place of the file \
-                         you picked as template, after keeping a copy of it."
-                    ),
-                );
-            }
+            wrapped_weak(
+                ui,
+                format!(
+                    "{} To replace a slot, put the download in place of its file, after \
+                     keeping a copy of that file.",
+                    naming(target)
+                ),
+            );
             name
         };
         name
@@ -600,15 +586,13 @@ impl Convert {
                 #[cfg(target_arch = "wasm32")]
                 Written::Download { name, .. } => {
                     wrapped(ui, format!("Downloaded {name}."));
-                    if target == Platform::Pc {
-                        wrapped_weak(
-                            ui,
-                            format!(
-                                "{PC_NAMING} If the browser added a number to the name, \
-                                 remove it."
-                            ),
-                        );
-                    }
+                    wrapped_weak(
+                        ui,
+                        format!(
+                            "{} If the browser added a number to the name, remove it.",
+                            naming(target)
+                        ),
+                    );
                 }
             }
             if !VERIFIED_IN_GAME {
@@ -776,35 +760,32 @@ mod tests {
     }
 
     #[test]
-    fn pc_names() {
-        assert!(is_pc_name("ALCHEMYXSAVE_8.sav"));
-        assert!(is_pc_name("ALCHEMYXSAVE_12.sav"));
-        for name in [
-            "ALCHEMYXSAVE_.sav",
-            "ALCHEMYXSAVE_8.sav.bak",
-            "ALCHEMYXSAVE_8 (1).sav",
-            "alchemyxsave_8.sav",
-            "ALCHEMYXSAVE_x.sav",
-            "0019.sav",
-        ] {
-            assert!(!is_pc_name(name), "{name}");
-        }
+    fn suggested_names_are_crash_3_slot_files() {
+        let pc = |template, source| suggested_name(Platform::Pc, template, source);
+        let switch = |template, source| suggested_name(Platform::Switch, template, source);
+        // The template's name, when it is a Crash 3 slot of the target.
         assert_eq!(
-            suggested_name(Platform::Pc, Some("ALCHEMYXSAVE_3.sav"), "0019.sav"),
-            "ALCHEMYXSAVE_3.sav"
+            pc(Some("ALCHEMYXSAVE_10.sav"), "MACK_9.sav"),
+            "ALCHEMYXSAVE_10.sav"
         );
         assert_eq!(
-            suggested_name(Platform::Pc, Some("backup.sav"), "0019.sav"),
-            "ALCHEMYXSAVE_0.sav"
+            switch(Some("MACK_11.sav"), "ALCHEMYXSAVE_9.sav"),
+            "MACK_11.sav"
         );
+        // Else the source's slot.
+        assert_eq!(pc(Some("backup.sav"), "MACK_9.sav"), "ALCHEMYXSAVE_9.sav");
         assert_eq!(
-            suggested_name(Platform::Pc, None, "0019.sav"),
-            "ALCHEMYXSAVE_0.sav"
+            pc(Some("ALCHEMYXSAVE_2.sav"), "mack_9.sav"),
+            "ALCHEMYXSAVE_9.sav"
         );
-        assert_eq!(
-            suggested_name(Platform::Switch, Some("0001.sav"), "ALCHEMYXSAVE_8.sav"),
-            "ALCHEMYXSAVE_8.sav"
-        );
+        assert_eq!(switch(None, "ALCHEMYXSAVE_10.sav"), "MACK_10.sav");
+        assert_eq!(switch(Some("0001.sav"), "ALCHEMYXSAVE_8.sav"), "MACK_8.sav");
+        // Else the first Crash 3 slot.
+        assert_eq!(pc(None, "0019.sav"), "ALCHEMYXSAVE_8.sav");
+        assert_eq!(pc(None, "MACK_3.sav"), "ALCHEMYXSAVE_8.sav");
+        assert_eq!(switch(Some("MACK_4.sav"), "foo.sav"), "MACK_8.sav");
+        // A source named like the target's files doesn't count.
+        assert_eq!(switch(None, "MACK_10.sav"), "MACK_8.sav");
     }
 
     /// `0019.sav` to PC with the user's own PC save, and back to Switch.
