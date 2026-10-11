@@ -1,0 +1,44 @@
+--- a/src/platform_impl/windows/dark_mode.rs
++++ b/src/platform_impl/windows/dark_mode.rs
+@@ -15,7 +15,7 @@
+ 
+ use super::util;
+ 
+-static WIN10_BUILD_VERSION: Lazy<Option<u32>> = Lazy::new(|| {
++pub(crate) static WIN10_BUILD_VERSION: Lazy<Option<u32>> = Lazy::new(|| {
+     type RtlGetVersion = unsafe extern "system" fn(*mut OSVERSIONINFOW) -> NTSTATUS;
+     let handle = get_function!("ntdll.dll", RtlGetVersion);
+ 
+--- a/src/platform_impl/windows/event_loop.rs
++++ b/src/platform_impl/windows/event_loop.rs
+@@ -71,7 +71,7 @@
+ use crate::event_loop::{ActiveEventLoop as RootAEL, ControlFlow, DeviceEvents, EventLoopClosed};
+ use crate::keyboard::ModifiersState;
+ use crate::platform::pump_events::PumpStatus;
+-use crate::platform_impl::platform::dark_mode::try_theme;
++use crate::platform_impl::platform::dark_mode::{try_theme, WIN10_BUILD_VERSION};
+ use crate::platform_impl::platform::dpi::{become_dpi_aware, dpi_to_scale_factor};
+ use crate::platform_impl::platform::drop_handler::FileDropHandler;
+ use crate::platform_impl::platform::icon::WinCursor;
+@@ -2306,7 +2306,11 @@
+             }
+ 
+             let new_outer_rect: RECT;
+-            {
++            // Backport of rust-windowing/winit#4341: Windows 11 already suggests a rect on the
++            // monitor with the new DPI. Moving the window back onto the monitor found by
++            // `MonitorFromWindow` (still the old one while dragging) makes the DPI flip back and
++            // forth, and the window grows at each flip without reaching the other monitor.
++            if WIN10_BUILD_VERSION.is_some_and(|build| build < 22000) {
+                 let suggested_ul =
+                     (suggested_rect.left + margin_left, suggested_rect.top + margin_top);
+ 
+@@ -2403,6 +2407,8 @@
+ 
+                     conservative_rect
+                 };
++            } else {
++                new_outer_rect = suggested_rect;
+             }
+ 
+             unsafe {

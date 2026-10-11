@@ -1,5 +1,6 @@
 [workspace]
 members = ["crates/igb", "crates/nsane", "crates/gui"]
+exclude = ["vendor"]
 resolver = "3"
 
 [workspace.package]
@@ -42,6 +43,10 @@ web-sys = { version = "0.3.70", features = [
     "Url",
     "Window",
 ] }
+
+# winit 0.30 with a Windows fix that only its 0.31 line has: see vendor/README.md.
+[patch.crates-io]
+winit = { path = "vendor/winit" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
