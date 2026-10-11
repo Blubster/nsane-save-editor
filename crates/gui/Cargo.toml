@@ -14,14 +14,16 @@ nsane.workspace = true
 eframe.workspace = true
 egui.workspace = true
 log.workspace = true
+rfd.workspace = true
+serde.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 chrono.workspace = true
 env_logger.workspace = true
 png.workspace = true
-rfd.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys.workspace = true
 wasm-bindgen-futures.workspace = true
 web-sys.workspace = true
 

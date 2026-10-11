@@ -11,6 +11,7 @@ use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use nsane::igb::{IgbFile, SummaryValue};
 
 use super::*;
+use crate::prefs::tests::MemoryStorage;
 use crate::test_util::{repo_file, temp_dir};
 
 fn app(options: Options) -> App {
@@ -22,6 +23,13 @@ fn opening(path: PathBuf) -> App {
         open: Some(path),
         ..Options::default()
     })
+}
+
+fn opening_options(rel: &str) -> Options {
+    Options {
+        open: Some(repo_file(rel)),
+        ..Options::default()
+    }
 }
 
 fn harness(app: App) -> Harness<'static, App> {
@@ -417,6 +425,123 @@ fn narrow_windows_collapse_the_side_panels() {
     harness.get_by_label("Overview").click();
     harness.run_steps(2);
     harness.get_by_role(Role::SpinButton);
+}
+
+#[test]
+fn a_dropped_file_asks_before_replacing_unsaved_changes() {
+    let bytes = fs::read(repo_file("saves/0019.sav")).unwrap();
+    let mut harness = harness(opening(repo_file("saves/0018.sav")));
+    type_lives(&mut harness, "42");
+    let drop = Action::OpenBytes {
+        name: "0019.sav".into(),
+        bytes: bytes.clone(),
+    };
+    harness
+        .state_mut()
+        .run(&Context::default(), vec![drop.clone()]);
+    assert!(matches!(
+        &harness.state().dialog,
+        Some(Dialog::Unsaved(Then::OpenBytes { name, .. })) if name == "0019.sav"
+    ));
+    harness.run_steps(2); // the dialog's first frame only measures it
+    harness.get_by_label("Discard").click();
+    harness.run_steps(2);
+    let file = harness.state().file.as_ref().unwrap();
+    assert_eq!(file.doc.file_name(), Some("0019.sav"));
+    assert_eq!(file.path, None, "no place on disk: Save asks where");
+    assert!(!file.doc.is_dirty());
+
+    // Clean: it opens right away. Not a save: an error, and the save stays.
+    harness.state_mut().run(
+        &Context::default(),
+        vec![Action::OpenBytes {
+            name: "notes.txt".into(),
+            bytes: b"not a save".to_vec(),
+        }],
+    );
+    assert!(matches!(harness.state().dialog, Some(Dialog::Error { .. })));
+    assert_eq!(doc(&harness).file_name(), Some("0019.sav"));
+}
+
+/// The app as `App::new` makes it, with the settings in `storage`.
+fn app_with_storage(storage: &MemoryStorage, options: Options) -> App {
+    App::with_prefs(
+        &Context::default(),
+        options,
+        Some(Prefs::load(Some(storage))),
+    )
+}
+
+#[test]
+fn theme_and_panels_survive_a_restart() {
+    let mut storage = MemoryStorage::default();
+    let mut first = harness(app_with_storage(
+        &storage,
+        opening_options("saves/0019.sav"),
+    ));
+    let dark = first.state().dark;
+    first.set_size(Vec2::new(600.0, 800.0));
+    first.run_steps(2);
+    first.get_by_label(if dark { "☀" } else { "🌙" }).click();
+    first.get_by_label("Overview").click();
+    first.run_steps(2);
+    assert_eq!(first.state().dark, !dark);
+    eframe::App::save(first.state_mut(), &mut storage);
+    drop(first);
+
+    let second = app_with_storage(&storage, opening_options("saves/0019.sav"));
+    assert_eq!(second.dark, !dark);
+    assert!(second.prefs.show_overview && !second.prefs.show_details);
+    let mut second = harness(second);
+    second.set_size(Vec2::new(600.0, 800.0));
+    second.run_steps(2);
+    second.get_by_role(Role::SpinButton); // the overview shows, unasked
+
+    // A theme given on the command line wins, and is not kept.
+    let mut forced = harness(app_with_storage(
+        &storage,
+        Options {
+            dark: Some(dark),
+            ..Options::default()
+        },
+    ));
+    assert_eq!(forced.state().dark, dark);
+    forced.run_steps(1);
+    eframe::App::save(forced.state_mut(), &mut storage);
+    assert_eq!(Prefs::load(Some(&storage)).dark, Some(!dark));
+}
+
+#[test]
+fn settings_are_not_kept_without_storage() {
+    // as in screenshot runs and the other tests
+    let mut harness = harness(opening(repo_file("saves/0019.sav")));
+    let dark = harness.state().dark;
+    harness.get_by_label(if dark { "☀" } else { "🌙" }).click();
+    harness.run_steps(2);
+    let mut storage = MemoryStorage::default();
+    eframe::App::save(harness.state_mut(), &mut storage);
+    assert!(storage.0.is_empty());
+}
+
+#[test]
+fn the_last_folder_is_remembered() {
+    let path = scratch_copy("saves/0018.sav", "last-dir");
+    let dir = path.parent().unwrap().to_owned();
+    let mut harness = harness(opening(path.clone()));
+    assert_eq!(
+        harness.state().prefs.last_dir.as_deref(),
+        Some(dir.as_path())
+    );
+
+    let other = temp_dir("last-dir-other");
+    assert!(harness.state_mut().save_to(other.join("copy.sav")));
+    assert_eq!(harness.state().prefs.last_dir, Some(other.clone()));
+
+    // a file that isn't a save leaves it
+    harness.state_mut().open_path(repo_file("Cargo.toml"));
+    assert_eq!(harness.state().prefs.last_dir, Some(other.clone()));
+    fs::remove_dir_all(dir).unwrap();
+    fs::remove_dir_all(other).unwrap();
 }
 
 #[test]

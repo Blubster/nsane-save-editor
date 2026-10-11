@@ -11,6 +11,28 @@ cargo run -p gui -- --open saves/0019.sav
 
 Open a save with the **Open** button, by dropping the file onto the window, or with `--open`. Saving over a file first copies it to `<name>.<YYYYMMDD-HHMMSS>.bak` next to it.
 
+### In a browser
+
+```sh
+cd crates/gui
+trunk serve                 # http://127.0.0.1:8080
+trunk build --release       # static files in crates/gui/dist
+```
+
+The file never leaves the browser. Open a save with **Open** or by dropping it onto the page. **Save** downloads the edited save under its name, and **Save as** asks for another name first; the opened file is left as it was, so there is no backup to make. The browser may add a number to a downloaded name that already exists (`ALCHEMYXSAVE_8 (1).sav`): the PC game only reads `ALCHEMYXSAVE_<n>.sav`, so rename it. While there are unsaved changes, the browser asks before the tab is closed or reloaded.
+
+### Settings
+
+The app remembers the theme picked with the toolbar toggle, which side panels are shown on a narrow window and, on the desktop, the folder of the last file opened or saved. They are kept in:
+
+| Platform | Place |
+|---|---|
+| Linux | `$XDG_DATA_HOME/nsane-save-editor/app.ron`, by default `~/.local/share/nsane-save-editor/app.ron` |
+| Windows | `%APPDATA%\nsane-save-editor\data\app.ron` |
+| Browser | the site's local storage |
+
+`--theme` overrides the stored theme without changing it. Runs with `--screenshot` neither read nor write the settings. Window size and panel widths are not kept.
+
 ### Keyboard shortcuts
 
 | Keys | Action |

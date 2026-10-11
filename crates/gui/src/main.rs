@@ -6,6 +6,7 @@ mod games;
 mod icons;
 mod io;
 mod options;
+mod prefs;
 #[cfg(not(target_arch = "wasm32"))]
 mod screenshot;
 #[cfg(test)]
@@ -29,9 +30,14 @@ fn main() -> eframe::Result {
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title(app::APP_TITLE)
+            // names the settings folder, and the window for the desktop
+            .with_app_id(app::APP_ID)
             .with_inner_size(options.size.unwrap_or([1024.0, 720.0]))
             .with_min_inner_size([480.0, 320.0])
             .with_maximized(options.maximized),
+        // Only the settings of `Prefs` are kept: a window size or panel
+        // width from the last run would override `--size` and screenshots.
+        persist_window: false,
         ..Default::default()
     };
     eframe::run_native(

@@ -10,7 +10,6 @@ use egui::{
     Align, Align2, Button, Color32, Context, Frame, Id, Key, KeyboardShortcut, Layout, Margin,
     Modal, Modifiers, RichText, Sense, Ui, Vec2, ViewportCommand,
 };
-#[cfg(not(target_arch = "wasm32"))]
 use nsane::SaveError;
 use nsane::crash3::{Edit, LevelId};
 use nsane::{Document, OpenError};
@@ -19,9 +18,13 @@ use crate::gallery::Gallery;
 use crate::games::crash3::Crash3Ui;
 use crate::icons::{self, Icon, IconState};
 use crate::options::{Options, View};
+use crate::prefs::Prefs;
 use crate::theme;
 
 pub const APP_TITLE: &str = "Save editor for Crash Bandicoot N. Sane Trilogy";
+/// Names the settings folder (and the window, for the desktop).
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))] // the web keeps settings per site
+pub const APP_ID: &str = "nsane-save-editor";
 
 /// Below this window width the side panels collapse into toggles.
 const NARROW_WIDTH: f32 = 900.0;
@@ -40,6 +43,15 @@ const REDO: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Y)
 const REDO_SHIFT: KeyboardShortcut =
     KeyboardShortcut::new(Modifiers::COMMAND.plus(Modifiers::SHIFT), Key::Z);
 
+#[cfg(not(target_arch = "wasm32"))]
+const SAVE_TIP: &str = "Save, keeping a backup of the file replaced";
+#[cfg(not(target_arch = "wasm32"))]
+const SAVE_AS_TIP: &str = "Save to another file";
+#[cfg(target_arch = "wasm32")]
+const SAVE_TIP: &str = "Download the edited save, under the same name";
+#[cfg(target_arch = "wasm32")]
+const SAVE_AS_TIP: &str = "Download the edited save under another name";
+
 /// A request from the interface, carried out after the frame is drawn.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Action {
@@ -47,6 +59,12 @@ pub enum Action {
     /// A file named on the command line or dropped onto the window.
     #[cfg(not(target_arch = "wasm32"))]
     OpenPath(PathBuf),
+    /// A file dropped onto the page, already read.
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))] // the desktop opens by path
+    OpenBytes {
+        name: String,
+        bytes: Vec<u8>,
+    },
     Save,
     SaveAs,
     Undo,
@@ -64,11 +82,14 @@ enum Then {
     Open,
     #[cfg(not(target_arch = "wasm32"))]
     OpenPath(PathBuf),
+    OpenBytes {
+        name: String,
+        bytes: Vec<u8>,
+    },
     Close,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(target_arch = "wasm32", allow(dead_code))] // until the web build reads files
 enum Dialog {
     /// Save, discard or cancel, before `Then`.
     Unsaved(Then),
@@ -76,6 +97,9 @@ enum Dialog {
         title: String,
         message: String,
     },
+    /// The name to download the save under.
+    #[cfg(target_arch = "wasm32")]
+    DownloadAs(String),
 }
 
 /// The game tabs. A save holds all three games.
@@ -153,9 +177,10 @@ pub struct App {
     crash3: Crash3Ui,
     dialog: Option<Dialog>,
     toasts: Vec<Toast>,
-    /// On a narrow window, whether each side panel is shown.
-    show_overview: bool,
-    show_details: bool,
+    prefs: Prefs,
+    /// The settings as last written to storage; `None` when they are not
+    /// kept (screenshots, tests).
+    stored_prefs: Option<Prefs>,
     /// Shortcuts that wait one frame so that a field being typed in commits
     /// its value first.
     deferred: Vec<Action>,
@@ -170,20 +195,39 @@ pub struct App {
     gallery_open: bool,
     #[cfg(not(target_arch = "wasm32"))]
     screenshot: Option<crate::screenshot::Screenshot>,
+    #[cfg(target_arch = "wasm32")]
+    inbox: crate::io::web::Inbox,
+    #[cfg(target_arch = "wasm32")]
+    leave_guard: crate::io::web::LeaveGuard,
 }
 
 impl App {
+    /// The app, with the settings kept from the last run. Screenshot runs
+    /// neither read nor write them, so that they look the same everywhere.
     pub fn new(cc: &eframe::CreationContext<'_>, options: Options) -> Self {
-        Self::with_context(&cc.egui_ctx, options)
+        #[cfg(not(target_arch = "wasm32"))]
+        let keep = options.screenshots.is_empty();
+        #[cfg(target_arch = "wasm32")]
+        let keep = true;
+        let stored = keep.then(|| Prefs::load(cc.storage));
+        Self::with_prefs(&cc.egui_ctx, options, stored)
     }
 
+    /// The app with default settings, not kept.
+    #[cfg(test)]
     pub fn with_context(ctx: &Context, options: Options) -> Self {
+        Self::with_prefs(ctx, options, None)
+    }
+
+    fn with_prefs(ctx: &Context, options: Options, stored: Option<Prefs>) -> Self {
+        let prefs = stored.clone().unwrap_or_default();
         #[cfg(not(target_arch = "wasm32"))]
         let first_shot_theme = options.screenshots.first().and_then(|s| s.dark);
         #[cfg(target_arch = "wasm32")]
         let first_shot_theme = None;
         let dark = first_shot_theme
             .or(options.dark)
+            .or(prefs.dark)
             .unwrap_or(ctx.theme() == egui::Theme::Dark);
         theme::apply(ctx, dark);
         let mut app = Self {
@@ -194,8 +238,8 @@ impl App {
             crash3: Crash3Ui::default(),
             dialog: None,
             toasts: Vec::new(),
-            show_overview: false,
-            show_details: false,
+            prefs,
+            stored_prefs: stored,
             deferred: Vec::new(),
             title: APP_TITLE.to_owned(),
             closing: false,
@@ -204,6 +248,10 @@ impl App {
             gallery_open: false,
             #[cfg(not(target_arch = "wasm32"))]
             screenshot: crate::screenshot::Screenshot::new(options.screenshots),
+            #[cfg(target_arch = "wasm32")]
+            inbox: Default::default(),
+            #[cfg(target_arch = "wasm32")]
+            leave_guard: Default::default(),
         };
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(path) = options.open {
@@ -227,7 +275,6 @@ impl App {
         });
     }
 
-    #[cfg_attr(target_arch = "wasm32", allow(dead_code))] // until the web build reads files
     fn error(&mut self, title: impl Into<String>, message: impl Into<String>) {
         self.dialog = Some(Dialog::Error {
             title: title.into(),
@@ -236,14 +283,13 @@ impl App {
     }
 
     /// Replaces the document with `bytes`, or explains why it can't. The open
-    /// document stays when the file is not a save.
-    #[cfg_attr(target_arch = "wasm32", allow(dead_code))] // until the web build reads files
+    /// document stays when the file is not a save. Returns whether it opened.
     fn open_bytes(
         &mut self,
         bytes: &[u8],
         name: String,
         #[cfg(not(target_arch = "wasm32"))] path: Option<PathBuf>,
-    ) {
+    ) -> bool {
         match Document::open(bytes, Some(name.clone())) {
             Ok(doc) => {
                 self.file = Some(OpenFile {
@@ -253,17 +299,42 @@ impl App {
                     change_count: None,
                 });
                 self.crash3.reset();
+                true
             }
-            Err(e) => self.error(format!("Can't open {name}"), open_error_message(&e)),
+            Err(e) => {
+                self.error(format!("Can't open {name}"), open_error_message(&e));
+                false
+            }
         }
+    }
+
+    /// Opens a file the user has picked or dropped, without a place on disk.
+    fn open_unsaved_bytes(&mut self, bytes: &[u8], name: String) {
+        #[cfg(not(target_arch = "wasm32"))]
+        self.open_bytes(bytes, name, None);
+        #[cfg(target_arch = "wasm32")]
+        self.open_bytes(bytes, name);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     fn open_path(&mut self, path: PathBuf) {
         let name = display_name(&path);
         match crate::io::native::read(&path) {
-            Ok(bytes) => self.open_bytes(&bytes, name, Some(path)),
+            Ok(bytes) => {
+                if self.open_bytes(&bytes, name, Some(path.clone())) {
+                    self.remember_folder(&path);
+                }
+            }
             Err(e) => self.error(format!("Can't open {name}"), e.to_string()),
+        }
+    }
+
+    /// Dialogs start in the folder of the last file opened or saved.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn remember_folder(&mut self, path: &Path) {
+        if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
+            let dir = std::path::absolute(dir).unwrap_or_else(|_| dir.to_owned());
+            self.prefs.last_dir = Some(dir);
         }
     }
 
@@ -273,7 +344,8 @@ impl App {
             .file
             .as_ref()
             .and_then(|f| f.path.as_deref())
-            .and_then(Path::parent);
+            .and_then(Path::parent)
+            .or(self.prefs.last_dir.as_deref());
         match crate::io::native::pick_open(start) {
             Ok(Some(path)) => self.open_path(path),
             Ok(None) => {}
@@ -290,26 +362,38 @@ impl App {
         );
     }
 
-    /// Saves to the document's file, or asks where when it has none.
-    /// Returns whether the file was written.
+    /// Saves to the document's file, or asks where when it has none. In the
+    /// browser, downloads it under its name. Returns whether it was written.
     fn save(&mut self) -> bool {
         #[cfg(not(target_arch = "wasm32"))]
-        if let Some(path) = self.file.as_ref().and_then(|f| f.path.clone()) {
-            return self.save_to(path);
+        {
+            if let Some(path) = self.file.as_ref().and_then(|f| f.path.clone()) {
+                return self.save_to(path);
+            }
+            self.save_as()
         }
-        self.save_as()
-    }
-
-    /// Asks where to save, then saves. Returns whether the file was written.
-    fn save_as(&mut self) -> bool {
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(target_arch = "wasm32")]
         {
             let Some(file) = &self.file else {
                 return false;
             };
-            let suggested = match &file.path {
-                Some(path) => path.clone(),
-                None => PathBuf::from(file.name()),
+            let name = file.name().to_owned();
+            self.download(name)
+        }
+    }
+
+    /// Asks where to save, then saves. In the browser, asks for the name to
+    /// download under. Returns whether the file was written.
+    fn save_as(&mut self) -> bool {
+        let Some(file) = &self.file else {
+            return false;
+        };
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let suggested = match (&file.path, &self.prefs.last_dir) {
+                (Some(path), _) => path.clone(),
+                (None, Some(dir)) => dir.join(file.name()),
+                (None, None) => PathBuf::from(file.name()),
             };
             match crate::io::native::pick_save(Some(&suggested)) {
                 Ok(Some(path)) => self.save_to(path),
@@ -322,25 +406,19 @@ impl App {
         }
         #[cfg(target_arch = "wasm32")]
         {
-            self.toast(
-                ToastKind::Error,
-                "Saving isn't available in the browser yet.",
-            );
+            self.dialog = Some(Dialog::DownloadAs(file.name().to_owned()));
             false
         }
     }
 
-    /// Writes the document to `path`, backing up the file it replaces.
+    /// The bytes to write, or an error dialog saying why there are none.
     ///
-    /// Every save goes through here: a review of the changes, shown before
-    /// writing, belongs at the start of this function.
-    #[cfg(not(target_arch = "wasm32"))]
-    fn save_to(&mut self, path: PathBuf) -> bool {
-        let Some(file) = &mut self.file else {
-            return false;
-        };
-        let bytes = match file.doc.to_bytes() {
-            Ok(bytes) => bytes,
+    /// Every save, to a file or as a download, goes through here: a review
+    /// of the changes, shown before writing, belongs before this call.
+    fn bytes_to_write(&mut self) -> Option<Vec<u8>> {
+        let file = self.file.as_mut()?;
+        match file.doc.to_bytes() {
+            Ok(bytes) => Some(bytes),
             Err(SaveError::DoesNotFit { needed, capacity }) => {
                 self.error(
                     "The save doesn't fit",
@@ -350,27 +428,65 @@ impl App {
                          some changes, then save again."
                     ),
                 );
-                return false;
+                None
             }
             Err(SaveError::Save(e)) => {
                 self.error("Can't save", e.to_string());
-                return false;
+                None
             }
+        }
+    }
+
+    /// Writes the document to `path`, backing up the file it replaces.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn save_to(&mut self, path: PathBuf) -> bool {
+        let Some(bytes) = self.bytes_to_write() else {
+            return false;
         };
         let now = crate::io::native::local_now();
         match crate::io::native::write_with_backup(&path, &bytes, now) {
             Ok(backup) => {
-                file.doc.mark_saved(Some(display_name(&path)));
                 let mut text = format!("Saved {}", path.display());
                 if let Some(backup) = backup {
                     text += &format!("\nBackup of the previous file: {}", backup.display());
                 }
-                file.path = Some(path);
+                self.remember_folder(&path);
+                if let Some(file) = &mut self.file {
+                    file.doc.mark_saved(Some(display_name(&path)));
+                    file.path = Some(path);
+                }
                 self.toast(ToastKind::Info, text);
                 true
             }
             Err(e) => {
                 self.error(format!("Can't write {}", path.display()), e.to_string());
+                false
+            }
+        }
+    }
+
+    /// Hands the document to the browser as a download named `name`. The
+    /// file it was opened from is left as it was.
+    #[cfg(target_arch = "wasm32")]
+    fn download(&mut self, name: String) -> bool {
+        let Some(bytes) = self.bytes_to_write() else {
+            return false;
+        };
+        match crate::io::web::download(&name, &bytes) {
+            Ok(()) => {
+                let mut text = format!("Downloaded {name}.");
+                if let Some(file) = &mut self.file {
+                    file.doc.mark_saved(Some(name));
+                    if file.doc.platform() == nsane::Platform::Pc {
+                        text += " The game only reads ALCHEMYXSAVE_<n>.sav: if the \
+                                 browser added a number to the name, remove it.";
+                    }
+                }
+                self.toast(ToastKind::Info, text);
+                true
+            }
+            Err(e) => {
+                self.error(format!("Can't download {name}"), e);
                 false
             }
         }
@@ -390,14 +506,13 @@ impl App {
             Then::Open => {
                 #[cfg(not(target_arch = "wasm32"))]
                 self.open_dialog();
+                // still in the click or key press that asked for it
                 #[cfg(target_arch = "wasm32")]
-                self.toast(
-                    ToastKind::Error,
-                    "Opening files isn't available in the browser yet.",
-                );
+                self.inbox.pick_open(ctx);
             }
             #[cfg(not(target_arch = "wasm32"))]
             Then::OpenPath(path) => self.open_path(path),
+            Then::OpenBytes { name, bytes } => self.open_unsaved_bytes(&bytes, name),
             Then::Close => {
                 self.closing = true;
                 ctx.send_viewport_cmd(ViewportCommand::Close);
@@ -426,6 +541,9 @@ impl App {
                 Action::Open => self.guard(ctx, Then::Open),
                 #[cfg(not(target_arch = "wasm32"))]
                 Action::OpenPath(path) => self.guard(ctx, Then::OpenPath(path)),
+                Action::OpenBytes { name, bytes } => {
+                    self.guard(ctx, Then::OpenBytes { name, bytes })
+                }
                 Action::Save => {
                     if self.file.is_some() {
                         self.save();
@@ -499,13 +617,26 @@ impl App {
         }
         #[cfg(not(target_arch = "wasm32"))]
         actions.push(Action::OpenPath(file.path().to_owned()));
+        // The browser reads it in the background: see `incoming`.
         #[cfg(target_arch = "wasm32")]
         {
-            let _ = (file, actions);
-            self.toast(
-                ToastKind::Error,
-                "Opening files isn't available in the browser yet.",
-            );
+            let _ = actions;
+            self.inbox.read_dropped(ctx, file.clone());
+        }
+    }
+
+    /// Files the browser has finished reading.
+    #[cfg(target_arch = "wasm32")]
+    fn incoming(&mut self, actions: &mut Vec<Action>) {
+        while let Some(incoming) = self.inbox.try_recv() {
+            let name = incoming.name;
+            match incoming.bytes {
+                Ok(bytes) if incoming.picked => {
+                    self.open_bytes(&bytes, name);
+                }
+                Ok(bytes) => actions.push(Action::OpenBytes { name, bytes }),
+                Err(e) => self.error(format!("Can't open {name}"), e),
+            }
         }
     }
 
@@ -557,14 +688,14 @@ impl App {
                     }
                     if ui
                         .add_enabled(has_file, Button::new("Save"))
-                        .on_hover_text(tip("Save, keeping a backup of the file replaced", &SAVE))
+                        .on_hover_text(tip(SAVE_TIP, &SAVE))
                         .clicked()
                     {
                         actions.push(Action::Save);
                     }
                     if ui
                         .add_enabled(has_file, Button::new("Save as"))
-                        .on_hover_text(tip("Save to another file", &SAVE_AS))
+                        .on_hover_text(tip(SAVE_AS_TIP, &SAVE_AS))
                         .clicked()
                     {
                         actions.push(Action::SaveAs);
@@ -651,8 +782,8 @@ impl App {
                     }
                     if narrow {
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            ui.toggle_value(&mut self.show_details, "Details");
-                            ui.toggle_value(&mut self.show_overview, "Overview");
+                            ui.toggle_value(&mut self.prefs.show_details, "Details");
+                            ui.toggle_value(&mut self.prefs.show_overview, "Overview");
                         });
                     }
                 });
@@ -666,14 +797,14 @@ impl App {
             return;
         };
         let doc = &file.doc;
-        if !narrow || self.show_overview {
+        if !narrow || self.prefs.show_overview {
             egui::Panel::left("overview")
                 .resizable(true)
                 .default_size(240.0)
                 .min_size(180.0)
                 .show(ui, |ui| self.crash3.overview(ui, doc, actions));
         }
-        if !narrow || self.show_details {
+        if !narrow || self.prefs.show_details {
             egui::Panel::right("details")
                 .resizable(true)
                 .default_size(300.0)
@@ -690,6 +821,8 @@ impl App {
         let mut close = false;
         let mut then = None;
         let mut save_first = false;
+        #[cfg(target_arch = "wasm32")]
+        let mut download_as = None;
         match dialog {
             Dialog::Unsaved(next) => {
                 let (name, count) = match &mut self.file {
@@ -738,9 +871,44 @@ impl App {
                     }
                 });
             }
+            #[cfg(target_arch = "wasm32")]
+            Dialog::DownloadAs(name) => {
+                let mut name = name.clone();
+                Modal::new(Id::new("download-as")).show(ctx, |ui| {
+                    ui.set_max_width(380.0);
+                    ui.heading("Download as");
+                    ui.add_space(theme::SPACING);
+                    let field = ui.text_edit_singleline(&mut name);
+                    if !field.has_focus() && !field.lost_focus() {
+                        field.request_focus();
+                    }
+                    let entered = field.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+                    ui.add_space(theme::SPACING);
+                    let valid = !name.trim().is_empty();
+                    ui.horizontal(|ui| {
+                        if (ui.add_enabled(valid, Button::new("Download")).clicked() || entered)
+                            && valid
+                        {
+                            download_as = Some(name.trim().to_owned());
+                        }
+                        if ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(Key::Escape))
+                        {
+                            close = true;
+                        }
+                    });
+                });
+                if let Some(Dialog::DownloadAs(kept)) = &mut self.dialog {
+                    *kept = name;
+                }
+            }
         }
         if close {
             self.dialog = None;
+        }
+        #[cfg(target_arch = "wasm32")]
+        if let Some(name) = download_as {
+            self.dialog = None;
+            self.download(name);
         }
         if let Some(then) = then {
             self.dialog = None;
@@ -822,6 +990,8 @@ impl App {
             let deferred = std::mem::take(&mut self.deferred);
             self.shortcuts(&ctx, &mut actions);
             self.dropped_files(&ctx, &mut actions);
+            #[cfg(target_arch = "wasm32")]
+            self.incoming(&mut actions);
             self.close_requested(&ctx);
             self.toolbar(ui, &mut actions);
             if self.file.is_some() {
@@ -843,9 +1013,12 @@ impl App {
             actions.extend(deferred);
             self.run(&ctx, actions);
             self.update_title(&ctx);
+            #[cfg(target_arch = "wasm32")]
+            self.leave_guard.set(self.is_dirty());
         }
         if self.dark != dark {
             theme::apply(&ctx, self.dark);
+            self.prefs.dark = Some(self.dark);
         }
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(screenshot) = &mut self.screenshot
@@ -858,8 +1031,30 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
         self.show(ui);
+        // Written as soon as they change: the browser's storage keeps them
+        // right away, and the desktop's is written out on exit.
+        if let Some(stored) = &mut self.stored_prefs
+            && *stored != self.prefs
+            && let Some(storage) = frame.storage_mut()
+        {
+            self.prefs.store(storage);
+            *stored = self.prefs.clone();
+        }
+    }
+
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        if let Some(stored) = &mut self.stored_prefs {
+            self.prefs.store(storage);
+            *stored = self.prefs.clone();
+        }
+    }
+
+    /// Panel widths and the like start afresh: they would make screenshots
+    /// depend on the last run.
+    fn persist_egui_memory(&self) -> bool {
+        false
     }
 }
 
@@ -996,7 +1191,6 @@ fn plural(n: usize, one: &str, many: &str) -> String {
     }
 }
 
-#[cfg_attr(target_arch = "wasm32", allow(dead_code))] // until the web build reads files
 fn open_error_message(e: &OpenError) -> String {
     match e {
         nsane::Error::NotASave(why) => format!("Not an N. Sane Trilogy save: {why}."),
