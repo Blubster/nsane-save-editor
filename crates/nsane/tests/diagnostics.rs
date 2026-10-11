@@ -2,7 +2,7 @@
 //! write are made by changing session fields directly.
 
 use std::cmp::Reverse;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use nsane::crash3::presets::{self, AllRelics, CompleteAll, ReachRelicCount, StoryUpTo};
 use nsane::crash3::tables::{bit, field};
@@ -10,50 +10,37 @@ use nsane::crash3::{Crash3Save, Diagnostic, Edit, LevelId, Relic, Severity};
 use nsane::igb::FieldValue;
 use nsane::{Document, Platform};
 
-fn repo() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
+#[path = "support/corpus.rs"]
+mod corpus;
 
+/// A save under `tests/saves/`, or `live/<name>`, a save rebuilt from its
+/// recipe.
 fn read(rel: &str) -> Vec<u8> {
-    let path = repo().join(rel);
-    std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+    corpus::input(rel).unwrap_or_else(|e| panic!("{e}"))
 }
 
-/// Opens a save under its own file name, as the GUI does.
+/// Opens a save under its own file name, as the GUI does. A rebuilt save
+/// keeps the name of the file it rebuilds: `live/<name>` opens as `<name>.sav`.
 fn open(rel: &str) -> Document {
-    let name = Path::new(rel).file_name().unwrap().to_string_lossy();
-    Document::open(&read(rel), Some(name.into_owned())).unwrap_or_else(|e| panic!("{rel}: {e}"))
+    let name = match rel.strip_prefix("live/") {
+        Some(recipe) => format!("{recipe}.sav"),
+        None => Path::new(rel)
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned(),
+    };
+    Document::open(&read(rel), Some(name)).unwrap_or_else(|e| panic!("{rel}: {e}"))
 }
 
 fn id(key: &str) -> LevelId {
     LevelId::from_key(key).unwrap()
 }
 
-/// The saves of a directory, recursively, as paths relative to the repository.
-fn saves_in(dir: &str) -> Vec<String> {
-    fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
-        for entry in std::fs::read_dir(dir).unwrap() {
-            let path = entry.unwrap().path();
-            if path.is_dir() {
-                walk(&path, out);
-            } else if path.extension().is_some_and(|e| e == "sav") {
-                out.push(path);
-            }
-        }
-    }
-    let root = repo();
-    let mut paths = Vec::new();
-    walk(&root.join(dir), &mut paths);
-    paths.sort();
-    paths
-        .iter()
-        .map(|p| {
-            p.strip_prefix(&root)
-                .unwrap()
-                .to_string_lossy()
-                .into_owned()
-        })
-        .collect()
+/// Opens a test save under its own file name.
+fn open_save(save: &corpus::Save) -> Document {
+    Document::open(&save.bytes, Some(save.name.clone()))
+        .unwrap_or_else(|e| panic!("{}: {e}", save.source))
 }
 
 /// The diagnostics with this code and level. Also checks the order.
@@ -96,7 +83,7 @@ fn serious(doc: &Document) -> Vec<&Diagnostic> {
 
 /// `0019.sav` with session fields changed directly, as another tool might.
 fn poked(level: LevelId, pokes: &[(usize, FieldValue)]) -> Document {
-    let save = Crash3Save::parse(&read("saves/0019.sav")).unwrap();
+    let save = Crash3Save::parse(&read("tests/saves/game/0019.sav")).unwrap();
     let session = save.session(level).unwrap().id;
     let mut igb = save.into_igb();
     for &(i, value) in pokes {
@@ -119,20 +106,23 @@ fn bool_field(value: bool) -> (usize, FieldValue) {
 #[test]
 fn no_warning_or_error_on_the_saves_the_game_wrote() {
     // Stronger than the requirement: no diagnostic at all. Every save in
-    // `saves/` comes from the game, which keeps its own data consistent.
-    let saves = saves_in("saves");
+    // `tests/saves/game/` comes from the game, which keeps its own data
+    // consistent. The saves of `after_edit/` were written by the game too,
+    // but they keep what the edits left (relics without a matching time, more
+    // than 99 lives), and one is a PC save under a test name.
+    let saves = corpus::game();
     assert_eq!(saves.len(), 21);
-    for rel in saves {
-        let doc = open(&rel);
-        assert_eq!(doc.diagnostics(), [], "{rel}");
+    for save in saves {
+        assert_eq!(open_save(&save).diagnostics(), [], "{}", save.source);
     }
 }
 
 #[test]
 fn every_fix_resolves_its_diagnostic() {
     let mut fixes = 0;
-    for rel in saves_in("saves").into_iter().chain(saves_in("test_saves")) {
-        let doc = open(&rel);
+    for save in corpus::corpus() {
+        let doc = open_save(&save);
+        let rel = &save.source;
         for d in doc.diagnostics() {
             let Some(fix) = &d.fix else { continue };
             let mut fixed = doc.clone();
@@ -149,12 +139,13 @@ fn every_fix_resolves_its_diagnostic() {
             fixes += 1;
         }
     }
-    assert!(fixes > 250, "{fixes}");
+    // the fixes offered on the 75 test saves (51 files, 24 rebuilt)
+    assert_eq!(fixes, 333);
 }
 
 #[test]
 fn portal_glitch_on_t4_defeats_n_gin() {
-    let mut doc = open("test_saves/t4_crystals.sav");
+    let mut doc = open("tests/saves/edited/t4_crystals.sav");
     assert_eq!(doc.current().totals().crystals, 22);
     let ngin = id("ngin");
     let d = the(&doc, "portal_glitch", Some(ngin));
@@ -191,7 +182,7 @@ fn portal_glitch_on_t4_defeats_n_gin() {
 
 #[test]
 fn portal_glitch_with_12_crystals_defeats_the_first_two_bosses() {
-    let mut doc = open("saves/initial_game.sav");
+    let mut doc = open("tests/saves/game/initial_game.sav");
     let crystals: Vec<Edit> = LevelId::all()
         .filter(|l| l.level().number.is_some_and(|n| n <= 12))
         .map(|level| Edit::SetCrystal { level, on: true })
@@ -231,7 +222,7 @@ fn portal_glitch_with_12_crystals_defeats_the_first_two_bosses() {
 
 #[test]
 fn lives_above_99_is_a_note() {
-    let doc = open("test_saves/round8/l8_lives_255.sav");
+    let doc = open("live/l8_lives_255");
     let d = the(&doc, "lives_above_99", None);
     assert_eq!(d.severity, Severity::Info);
     assert!(d.fix.is_none());
@@ -240,28 +231,16 @@ fn lives_above_99_is_a_note() {
         "255 lives: the game keeps them, but picking up a life adds nothing until the counter \
          is back under 99. This is harmless."
     );
-    assert!(
-        find(
-            &open("test_saves/round9/r9_lives_99.sav"),
-            "lives_above_99",
-            None
-        )
-        .is_empty()
-    );
+    assert!(find(&open("live/r9_lives_99"), "lives_above_99", None).is_empty());
     assert_eq!(
-        find(
-            &open("test_saves/round9/r9_lives_100.sav"),
-            "lives_above_99",
-            None
-        )
-        .len(),
+        find(&open("live/r9_lives_100"), "lives_above_99", None).len(),
         1
     );
 }
 
 #[test]
 fn bonus_gem_due_on_t7() {
-    let mut doc = open("test_saves/t7_bonus_gem.sav");
+    let mut doc = open("tests/saves/edited/t7_bonus_gem.sav");
     let d = the(&doc, "bonus_gem_due", None);
     assert_eq!(d.severity, Severity::Info);
     assert_eq!(d.fix.as_ref().unwrap().label, "Give the bonus gem now");
@@ -273,7 +252,7 @@ fn bonus_gem_due_on_t7() {
 
 #[test]
 fn relic_time_mismatch_on_t1() {
-    let mut doc = open("test_saves/t1_relics.sav");
+    let mut doc = open("tests/saves/edited/t1_relics.sav");
     let waves = id("makinwaves");
     assert_eq!(doc.current().relic(waves), Some(Relic::Platinum));
     assert_eq!(doc.current().times(waves), Vec::<u32>::new());
@@ -299,7 +278,7 @@ fn relic_time_mismatch_on_t1() {
 fn relic_time_mismatch_cases() {
     // A slow time, a time for a better relic, and a matching time.
     let toad = id("toadvillage");
-    let mut doc = open("saves/initial_game.sav");
+    let mut doc = open("tests/saves/game/initial_game.sav");
     let gold = Relic::Gold;
     let times = |level, times_cs| Edit::SetTimes { level, times_cs };
     let at = |relic| presets::matching_time(toad, relic).unwrap();
@@ -337,7 +316,7 @@ fn relic_time_mismatch_cases() {
 
 #[test]
 fn crystal_field_mismatch() {
-    let save = Crash3Save::parse(&read("saves/0019.sav")).unwrap();
+    let save = Crash3Save::parse(&read("tests/saves/game/0019.sav")).unwrap();
     let toad = id("toadvillage");
     let road = id("roadcrash");
     assert!(save.crystal(toad) && !save.crystal(road));
@@ -359,7 +338,7 @@ fn crystal_field_mismatch() {
 
 #[test]
 fn relic_field_mismatch() {
-    let save = Crash3Save::parse(&read("saves/0019.sav")).unwrap();
+    let save = Crash3Save::parse(&read("tests/saves/game/0019.sav")).unwrap();
     let toad = id("toadvillage");
     assert_eq!(save.relic(toad), Some(Relic::Gold));
 
@@ -396,7 +375,7 @@ fn relic_counted_mismatch() {
     let road = id("roadcrash");
 
     // Missing with a relic: the fix sets the relic again, flag included.
-    let mut doc = open("saves/0019.sav");
+    let mut doc = open("tests/saves/game/0019.sav");
     let key = |name: &str| format!("{name}_RelicCounted");
     doc.apply(
         "poke",
@@ -412,7 +391,7 @@ fn relic_counted_mismatch() {
     assert_eq!(doc.diagnostics(), []);
 
     // Present without a relic: the fix removes it.
-    let mut doc = open("saves/0019.sav");
+    let mut doc = open("tests/saves/game/0019.sav");
     doc.apply(
         "poke",
         vec![Edit::RawFlagSet {
@@ -427,7 +406,7 @@ fn relic_counted_mismatch() {
 
 #[test]
 fn colored_gem_mismatch() {
-    let save = Crash3Save::parse(&read("saves/0019.sav")).unwrap();
+    let save = Crash3Save::parse(&read("tests/saves/game/0019.sav")).unwrap();
     let hang = id("hangemhigh");
     assert!(!save.colored_gem(hang));
     assert!(save.entered(hang));
@@ -446,7 +425,7 @@ fn colored_gem_mismatch() {
 
 #[test]
 fn progress_not_entered() {
-    let save = Crash3Save::parse(&read("saves/0019.sav")).unwrap();
+    let save = Crash3Save::parse(&read("tests/saves/game/0019.sav")).unwrap();
     let road = id("roadcrash");
     assert!(!save.entered(road));
 
@@ -476,7 +455,7 @@ fn progress_not_entered() {
 
 #[test]
 fn bits_only_another_tool_writes() {
-    let save = Crash3Save::parse(&read("saves/0019.sav")).unwrap();
+    let save = Crash3Save::parse(&read("tests/saves/game/0019.sav")).unwrap();
     let toad = id("toadvillage");
     let doc = poked(toad, &[flags(&save, toad, 0x0001 | 0x8000)]);
     let d = the(&doc, "unknown_flag_bits", Some(toad));
@@ -503,7 +482,7 @@ fn bits_only_another_tool_writes() {
 fn switch_size() {
     // The longest flag key that still fits `initial_game.sav` is 91,000
     // characters (test vectors `edge/switch_exact_fit`, `edge/switch_overflow`).
-    let mut doc = open("saves/initial_game.sav");
+    let mut doc = open("tests/saves/game/initial_game.sav");
     let key = |n| Edit::RawFlagSet { key: "x".repeat(n) };
 
     doc.apply("fits", vec![key(91_000)]).unwrap();
@@ -538,7 +517,7 @@ fn switch_size() {
 
 #[test]
 fn pc_file_name() {
-    let data = read("saves/ALCHEMYXSAVE_8.sav");
+    let data = read("tests/saves/game/ALCHEMYXSAVE_8.sav");
     let doc = Document::open(&data, Some("ALCHEMYXSAVE_8.sav".to_owned())).unwrap();
     assert_eq!(doc.platform(), Platform::Pc);
     assert_eq!(doc.diagnostics(), []);
@@ -570,19 +549,19 @@ fn pc_file_name() {
 fn save_slots() {
     for (rel, name, message) in [
         (
-            "saves/ALCHEMYXSAVE_8.sav",
+            "tests/saves/game/ALCHEMYXSAVE_8.sav",
             "ALCHEMYXSAVE_2.sav",
             "ALCHEMYXSAVE_2.sav is the file of save slot 2, one of the Crash Bandicoot slots. \
              The Crash 3 slots are ALCHEMYXSAVE_8.sav to ALCHEMYXSAVE_11.sav.",
         ),
         (
-            "saves/0019.sav",
+            "tests/saves/game/0019.sav",
             "mack_5.sav",
             "MACK_5.sav is the file of save slot 5, one of the Crash 2: Cortex Strikes Back \
              slots. The Crash 3 slots are MACK_8.sav to MACK_11.sav.",
         ),
         (
-            "saves/ALCHEMYXSAVE_8.sav",
+            "tests/saves/game/ALCHEMYXSAVE_8.sav",
             "ALCHEMYXSAVE_12.sav",
             "ALCHEMYXSAVE_12.sav is not the file of a save slot: the game has slots 0 to 11. \
              The Crash 3 slots are ALCHEMYXSAVE_8.sav to ALCHEMYXSAVE_11.sav.",
@@ -598,7 +577,7 @@ fn save_slots() {
 
 #[test]
 fn switch_file_name() {
-    let data = read("saves/0019.sav");
+    let data = read("tests/saves/game/0019.sav");
     // A save exported from the Switch can have any name, or its own.
     for name in ["foo.sav", "0019.sav", "MACK_8.sav", "MACK_11.sav"] {
         let doc = Document::open(&data, Some(name.to_owned())).unwrap();
@@ -617,7 +596,10 @@ fn switch_file_name() {
 
 #[test]
 fn presets_with_their_defaults_leave_no_warning() {
-    for rel in ["saves/initial_game.sav", "saves/0019.sav"] {
+    for rel in [
+        "tests/saves/game/initial_game.sav",
+        "tests/saves/game/0019.sav",
+    ] {
         let doc = open(rel);
         let save = doc.current();
         let presets: Vec<(&str, Vec<Edit>)> = vec![

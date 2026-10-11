@@ -2,8 +2,6 @@
 //! file that was tested in game on PC; the others by their totals, their
 //! warnings and the order of their edits.
 
-use std::path::{Path, PathBuf};
-
 use nsane::Document;
 use nsane::crash3::presets::{
     AllRelics, CompleteAll, DEFAULT_ABILITIES_ON, DEFAULT_ALL_RELICS_TIER, DEFAULT_CUTSCENES_SEEN,
@@ -17,13 +15,13 @@ use nsane::crash3::{
 };
 use nsane::igb::FieldValue;
 
-fn repo() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
+#[path = "support/corpus.rs"]
+mod corpus;
 
+/// A save under `tests/saves/`, or `live/<name>`, a save rebuilt from its
+/// recipe.
 fn read(rel: &str) -> Vec<u8> {
-    let path = repo().join(rel);
-    std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+    corpus::input(rel).unwrap_or_else(|e| panic!("{e}"))
 }
 
 fn load(rel: &str) -> Crash3Save {
@@ -63,7 +61,7 @@ fn times(level: LevelId, times_cs: &[u32]) -> Edit {
 
 #[test]
 fn complete_all_reproduces_the_108_percent_pc_save_tested_in_game() {
-    let mut save = load("saves/ALCHEMYXSAVE_8.sav");
+    let mut save = load("tests/saves/game/ALCHEMYXSAVE_8.sav");
     let options = CompleteAll {
         times: TimePolicy::Fixed(6000),
         skip_cutscenes: true,
@@ -72,15 +70,15 @@ fn complete_all_reproduces_the_108_percent_pc_save_tested_in_game() {
     edits.extend(all_cutscenes(true));
     edits.push(Edit::SetLives { count: 99 });
     save.apply_all(&edits).unwrap();
-    assert!(save.to_bytes().unwrap() == read("test_saves/pc/pc2_full108.sav"));
+    assert!(save.to_bytes().unwrap() == read("live/pc2_full108"));
 }
 
 #[test]
 fn complete_all_with_defaults_gives_108_percent() {
     for rel in [
-        "saves/initial_game.sav",
-        "saves/0019.sav",
-        "saves/ALCHEMYXSAVE_8.sav",
+        "tests/saves/game/initial_game.sav",
+        "tests/saves/game/0019.sav",
+        "tests/saves/game/ALCHEMYXSAVE_8.sav",
     ] {
         let save = load(rel);
         let done = applied(&save, &complete_all(&save, &CompleteAll::default()));
@@ -110,7 +108,7 @@ fn complete_all_with_defaults_gives_108_percent() {
 
 #[test]
 fn complete_all_order() {
-    let save = load("saves/0019.sav");
+    let save = load("tests/saves/game/0019.sav");
     let edits = complete_all(&save, &CompleteAll::default());
     let (toad, boneyard, hangem) = (id("toadvillage"), id("boneyard"), id("hangemhigh"));
     let on = true;
@@ -211,7 +209,7 @@ fn complete_all_order() {
 
 #[test]
 fn complete_all_is_one_undo_step() {
-    let mut doc = Document::open(&read("saves/0019.sav"), None).unwrap();
+    let mut doc = Document::open(&read("tests/saves/game/0019.sav"), None).unwrap();
     let edits = complete_all(doc.current(), &CompleteAll::default());
     let preview = doc.preview(&edits).unwrap();
     assert_eq!(preview.totals.percent(), 108);
@@ -230,7 +228,7 @@ fn complete_all_is_one_undo_step() {
 
 #[test]
 fn story_up_to_each_room_on_a_new_game() {
-    let save = load("saves/initial_game.sav");
+    let save = load("tests/saves/game/initial_game.sav");
     for room in 1..=5u8 {
         let done = applied(&save, &story_up_to(room, &StoryUpTo::default()).unwrap());
         let n = usize::from(room);
@@ -350,14 +348,14 @@ fn story_up_to_order() {
 
 #[test]
 fn all_relics_gold_leaves_a_platinum_save_alone() {
-    let save = load("test_saves/t6_after.sav");
+    let save = load("tests/saves/after_edit/t6_after.sav");
     let edits = all_relics(&save, DEFAULT_ALL_RELICS_TIER, &AllRelics::default());
     assert!(edits.is_empty(), "{edits:?}");
 }
 
 #[test]
 fn all_relics_gold_on_a_mid_game_save() {
-    let save = load("saves/0019.sav");
+    let save = load("tests/saves/game/0019.sav");
     let edits = all_relics(&save, Relic::Gold, &AllRelics::default());
     let done = applied(&save, &edits);
     let t = done.totals();
@@ -380,7 +378,7 @@ fn all_relics_gold_on_a_mid_game_save() {
 
 #[test]
 fn all_relics_upgrades_or_replaces() {
-    let mut save = load("saves/initial_game.sav");
+    let mut save = load("tests/saves/game/initial_game.sav");
     let (toad, under, orient) = (id("toadvillage"), id("underpressure"), id("orientexpress"));
     save.apply_all(&[
         relic(toad, Relic::Platinum),
@@ -423,7 +421,7 @@ fn all_relics_upgrades_or_replaces() {
 
 #[test]
 fn matching_times_keep_a_time_that_earns_the_relic() {
-    let mut save = load("saves/initial_game.sav");
+    let mut save = load("tests/saves/game/initial_game.sav");
     let (toad, under, orient) = (id("toadvillage"), id("underpressure"), id("orientexpress"));
     let platinum = matching_time(toad, Relic::Platinum).unwrap();
     let gold = matching_time(under, Relic::Gold).unwrap();
@@ -459,7 +457,7 @@ fn matching_times_keep_a_time_that_earns_the_relic() {
 
 #[test]
 fn reach_relic_count_on_a_mid_game_save() {
-    let save = load("saves/0019.sav");
+    let save = load("tests/saves/game/0019.sav");
     let edits = reach_relic_count(&save, 20, &ReachRelicCount::default());
     let done = applied(&save, &edits);
     assert_eq!(done.totals().relics(), 20);
@@ -526,7 +524,7 @@ fn all_abilities_and_all_cutscenes_order() {
         .collect();
     assert_eq!(names, flat);
 
-    let save = load("test_saves/t6_after.sav");
+    let save = load("tests/saves/after_edit/t6_after.sav");
     let none = applied(&save, &all_cutscenes(false));
     assert!(flat.iter().all(|s| !none.cutscene_seen(s)));
     let all = applied(&none, &all_cutscenes(true));
@@ -570,9 +568,9 @@ fn defaults() {
     assert_eq!(DEFAULT_ALL_RELICS_TIER, Relic::Gold);
     const { assert!(DEFAULT_ABILITIES_ON && DEFAULT_CUTSCENES_SEEN) };
 
-    let new_game = load("saves/initial_game.sav");
-    let mid = load("saves/0019.sav");
-    let full = load("test_saves/t6_after.sav");
+    let new_game = load("tests/saves/game/initial_game.sav");
+    let mid = load("tests/saves/game/0019.sav");
+    let full = load("tests/saves/after_edit/t6_after.sav");
     assert_eq!(default_story_room(&new_game), 1);
     assert_eq!(default_story_room(&mid), 3);
     assert_eq!(default_story_room(&full), 5);
@@ -637,8 +635,8 @@ fn contribution(save: &Crash3Save, level: LevelId) -> [u32; 4] {
 
 #[test]
 fn reset_level_gives_back_the_new_game_session() {
-    let fresh = load("saves/initial_game.sav");
-    let full = load("test_saves/t6_after.sav");
+    let fresh = load("tests/saves/game/initial_game.sav");
+    let full = load("tests/saves/after_edit/t6_after.sav");
     let before = full.totals();
     assert_eq!(counts(before), [25, 47, 31, 5]);
     let flags = full.flag_entries();
@@ -679,8 +677,8 @@ fn reset_level_gives_back_the_new_game_session() {
 
 #[test]
 fn reset_every_level_gives_back_a_new_game() {
-    let fresh = load("saves/initial_game.sav");
-    let full = load("test_saves/t6_after.sav");
+    let fresh = load("tests/saves/game/initial_game.sav");
+    let full = load("tests/saves/after_edit/t6_after.sav");
     let edits: Vec<Edit> = LevelId::all().map(reset).collect();
     let done = applied(&full, &edits);
     for level in LevelId::all() {
@@ -717,7 +715,7 @@ fn reset_every_level_gives_back_a_new_game() {
 
 #[test]
 fn reset_level_on_a_mid_game_save() {
-    let save = load("saves/0019.sav");
+    let save = load("tests/saves/game/0019.sav");
     let under = id("underpressure");
     let done = applied(&save, &[reset(under)]);
     let t = done.totals();

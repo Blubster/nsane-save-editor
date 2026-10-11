@@ -21,13 +21,13 @@ fn collect_saves(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Every `.sav` file under `saves/` and `test_saves/`, as (path relative to the
-/// repository, bytes).
+/// Every `.sav` file under `tests/saves/`, as (path relative to the
+/// repository, bytes). The saves that are rebuilt from their recipe instead of
+/// kept as files are checked by the `nsane` tests.
 fn all_saves() -> Vec<(String, Vec<u8>)> {
     let root = repo();
     let mut paths = Vec::new();
-    collect_saves(&root.join("saves"), &mut paths);
-    collect_saves(&root.join("test_saves"), &mut paths);
+    collect_saves(&root.join("tests/saves"), &mut paths);
     paths
         .into_iter()
         .map(|p| {
@@ -48,7 +48,9 @@ fn load(rel: &str) -> IgbFile {
 #[test]
 fn every_save_round_trips_byte_for_byte() {
     let saves = all_saves();
-    assert_eq!(saves.len(), 76, "expected 76 save files");
+    // 21 written by the game, 13 made by the editor, 17 written by the game
+    // after an edited save was loaded
+    assert_eq!(saves.len(), 51, "expected 51 save files");
     let mut failures = Vec::new();
     for (name, data) in &saves {
         match IgbFile::parse(data).and_then(|f| f.build()) {
@@ -71,11 +73,12 @@ fn every_save_round_trips_byte_for_byte() {
 fn only_pc_saves_are_unpadded() {
     for (name, data) in all_saves() {
         let file = IgbFile::parse(&data).unwrap();
-        let pc = name == "saves/ALCHEMYXSAVE_8.sav"
-            || name.starts_with("test_saves/pc/")
-            || name == "test_saves/round8/l1_switch_to_pc.sav"
-            || name == "test_saves/round8/l1_after.sav"
-            || name == "test_saves/round8/l6_relic_panels_pc.sav";
+        let pc = [
+            "tests/saves/game/ALCHEMYXSAVE_8.sav",
+            "tests/saves/edited/l1_switch_to_pc.sav",
+            "tests/saves/after_edit/l1_after.sav",
+        ]
+        .contains(&name.as_str());
         assert_eq!(file.padded(), !pc, "{name}");
         assert_eq!(file.file_size(), data.len(), "{name}");
         if file.padded() {
@@ -99,7 +102,7 @@ fn every_save_has_the_same_object_layout() {
 
 #[test]
 fn initial_game_summary() {
-    let file = load("saves/initial_game.sav");
+    let file = load("tests/saves/game/initial_game.sav");
     let expected = [
         ("save_version", SummaryValue::Int(75)),
         ("farthest_chapter", SummaryValue::Int(0)),
@@ -133,7 +136,7 @@ fn initial_game_summary() {
 
 #[test]
 fn handle_names_resolve_by_hash() {
-    let file = load("saves/0019.sav");
+    let file = load("tests/saves/game/0019.sav");
     let hash = handle_hash("Upgrade_DoubleJump");
     assert!(file.handle_names().iter().any(|(h, _)| *h == hash));
     assert_eq!(
@@ -157,7 +160,7 @@ fn fnv1a_reference_values() {
 
 #[test]
 fn zone_list_dereferences_to_zone_objects() {
-    let file = load("saves/initial_game.sav");
+    let file = load("tests/saves/game/initial_game.sav");
     let list = file.objects_of("CZoneInfoSaveList").next().unwrap();
     let ids = file.deref_list(list).unwrap();
     assert_eq!(ids.len(), 116);
@@ -172,7 +175,7 @@ fn zone_list_dereferences_to_zone_objects() {
 
 #[test]
 fn summary_edits_are_written() {
-    let mut file = load("saves/initial_game.sav");
+    let mut file = load("tests/saves/game/initial_game.sav");
     let s = file.summary_mut();
     s.set("life_count", SummaryValue::Int(42)).unwrap();
     assert_eq!(
@@ -222,7 +225,7 @@ fn summary_edits_are_written() {
 fn switch_files_keep_their_size_and_pc_files_grow() {
     let big = SummaryValue::Str(vec![b'x'; 100_000]);
 
-    let mut switch = load("saves/initial_game.sav");
+    let mut switch = load("tests/saves/game/initial_game.sav");
     switch
         .summary_mut()
         .insert_after("crystal_count", "big", big.clone())
@@ -236,7 +239,7 @@ fn switch_files_keep_their_size_and_pc_files_grow() {
         })
     );
 
-    let mut pc = load("saves/ALCHEMYXSAVE_8.sav");
+    let mut pc = load("tests/saves/game/ALCHEMYXSAVE_8.sav");
     let before = pc.file_size();
     pc.summary_mut()
         .insert_after("crystal_count", "big", big)
@@ -248,7 +251,7 @@ fn switch_files_keep_their_size_and_pc_files_grow() {
 
 #[test]
 fn memory_block_accessors() {
-    let mut file = load("saves/0019.sav");
+    let mut file = load("tests/saves/game/0019.sav");
     let ids: Vec<_> = file.memory_blocks().map(|b| b.id).collect();
     for id in ids {
         let block = file.memory_mut(id).unwrap();
@@ -286,14 +289,14 @@ fn memory_block_accessors() {
     }
     assert_eq!(
         file.build().unwrap(),
-        std::fs::read(repo().join("saves/0019.sav")).unwrap()
+        std::fs::read(repo().join("tests/saves/game/0019.sav")).unwrap()
     );
 }
 
 #[test]
 fn bool_padding_and_float_bits_survive() {
     // the upper bytes of a bool field are whatever the game left there
-    let file = load("saves/0019.sav");
+    let file = load("tests/saves/game/0019.sav");
     let fields: Vec<_> = file.objects().flat_map(|o| o.fields.iter()).collect();
     assert!(
         fields

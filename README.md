@@ -80,7 +80,7 @@ trunk build --release --public-url /nsane-save-editor/   # to serve them from a 
 | `crates/nsane` | The game layer: the Crash 3 model, edits, presets, diagnostics, undo history and the platform conversion. |
 | `crates/gui` | The desktop and web app (egui). |
 
-The save format, with the evidence behind each rule, is documented in [docs/FORMAT.md](docs/FORMAT.md). The tests run the editor on the saves in `saves/` and `test_saves/`, including saves that were loaded in game after being edited.
+The save format, with the evidence behind each rule, is documented in [docs/FORMAT.md](docs/FORMAT.md). The tests run the editor on the saves in [tests/saves/](tests/saves/README.md): saves the game wrote, saves that were edited and then loaded in game, and the game's saves after those tests. The edited saves that a recipe of edits rebuilds byte for byte are rebuilt by the tests instead of being kept as files.
 
 ## License
 

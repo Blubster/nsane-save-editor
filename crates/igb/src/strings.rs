@@ -104,7 +104,10 @@ mod tests {
 
     #[test]
     fn references_to_a_duplicate_move_to_the_first_copy() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../saves/initial_game.sav");
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../tests/saves/game/initial_game.sav"
+        );
         let mut file = IgbFile::parse(&std::fs::read(path).unwrap()).unwrap();
         assert_eq!(file.strings[1].as_deref(), Some(b"---".as_slice()));
         // a second "---" right after the first, referenced by one string field

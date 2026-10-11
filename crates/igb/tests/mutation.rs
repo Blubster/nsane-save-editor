@@ -12,9 +12,9 @@ fn load(rel: &str) -> IgbFile {
 }
 
 const SAVES: [&str; 3] = [
-    "saves/initial_game.sav",
-    "saves/0019.sav",
-    "saves/ALCHEMYXSAVE_8.sav",
+    "tests/saves/game/initial_game.sav",
+    "tests/saves/game/0019.sav",
+    "tests/saves/game/ALCHEMYXSAVE_8.sav",
 ];
 
 /// What a string reference points to: the text, or the raw value when it is 0
@@ -98,7 +98,7 @@ fn check_insert(rel: &str, text: &[u8]) -> u32 {
 
 #[test]
 fn the_saves_hold_every_kind_of_string_reference() {
-    let file = load("saves/0019.sav");
+    let file = load("tests/saves/game/0019.sav");
     let refs = references(&file);
     for kind in ["field", "str", "name"] {
         let texts = refs
@@ -112,9 +112,15 @@ fn the_saves_hold_every_kind_of_string_reference() {
 #[test]
 fn inserting_a_string_that_sorts_first() {
     // "" and "---" (initials) sort before letters, so "!" lands after "" only
-    assert_eq!(check_insert("saves/initial_game.sav", b"!first"), 1);
-    assert_eq!(check_insert("saves/0019.sav", b"!first"), 2);
-    assert_eq!(check_insert("saves/ALCHEMYXSAVE_8.sav", b"!first"), 1);
+    assert_eq!(
+        check_insert("tests/saves/game/initial_game.sav", b"!first"),
+        1
+    );
+    assert_eq!(check_insert("tests/saves/game/0019.sav", b"!first"), 2);
+    assert_eq!(
+        check_insert("tests/saves/game/ALCHEMYXSAVE_8.sav", b"!first"),
+        1
+    );
 }
 
 #[test]
@@ -132,12 +138,12 @@ fn inserting_a_string_in_the_middle() {
         assert!(idx > 2 && (idx as usize) < load(rel).strings().len());
     }
     // latin-1 above 0x7F sorts after ASCII
-    check_insert("saves/0019.sav", b"Caf\xe9_\xff");
+    check_insert("tests/saves/game/0019.sav", b"Caf\xe9_\xff");
 }
 
 #[test]
 fn an_existing_string_is_found_not_inserted() {
-    let mut file = load("saves/0019.sav");
+    let mut file = load("tests/saves/game/0019.sav");
     let before = file.clone();
     assert_eq!(file.string_index(b"").unwrap(), 1);
     assert_eq!(file.string_index(b"---").unwrap(), 2);
@@ -146,7 +152,7 @@ fn an_existing_string_is_found_not_inserted() {
 
 #[test]
 fn a_string_with_a_nul_is_rejected() {
-    let mut file = load("saves/0019.sav");
+    let mut file = load("tests/saves/game/0019.sav");
     let before = file.clone();
     assert_eq!(file.string_index(b"a\0b"), Err(IgbError::InvalidString));
     assert_eq!(file, before);
@@ -182,7 +188,7 @@ fn the_tables_of_every_save_are_valid() {
 
 #[test]
 fn remove_then_insert_the_same_key() {
-    let mut file = load("saves/0019.sav");
+    let mut file = load("tests/saves/game/0019.sav");
     let id = flag_table(&file);
     let before = assert_valid(&file, id);
     assert_eq!(before.get(b"HintDisplay_7".as_slice()), Some(&1));
@@ -206,7 +212,7 @@ fn remove_then_insert_the_same_key() {
 
 #[test]
 fn setting_an_existing_key_only_changes_its_value() {
-    let mut file = load("saves/0019.sav");
+    let mut file = load("tests/saves/game/0019.sav");
     let id = int_table(&file);
     let (key, _) = file.hash_table(id).unwrap().items().unwrap()[0].clone();
     file.hash_table_mut(id).unwrap().set(&key, 1234).unwrap();
@@ -217,7 +223,7 @@ fn setting_an_existing_key_only_changes_its_value() {
 
 #[test]
 fn an_int_table_rebuild_fills_empty_values_with_0xfa() {
-    let mut file = load("saves/0019.sav");
+    let mut file = load("tests/saves/game/0019.sav");
     let id = int_table(&file);
     let items = file.hash_table(id).unwrap().items().unwrap();
     assert_eq!(items.len(), 19);
@@ -253,7 +259,7 @@ fn an_int_table_rebuild_fills_empty_values_with_0xfa() {
 
 #[test]
 fn growth_changes_the_directory_and_the_header() {
-    let mut file = load("saves/initial_game.sav");
+    let mut file = load("tests/saves/game/initial_game.sav");
     let id = flag_table(&file);
     let entries = file.directory().len();
     let mut t = file.hash_table_mut(id).unwrap();
@@ -274,7 +280,9 @@ fn growth_changes_the_directory_and_the_header() {
     assert_eq!(word(1) as usize, entries + 1);
     assert_eq!(
         word(7),
-        load("saves/initial_game.sav").memory_blocks().count() as u32
+        load("tests/saves/game/initial_game.sav")
+            .memory_blocks()
+            .count() as u32
     );
     let reparsed = IgbFile::parse(&out).unwrap();
     assert_eq!(reparsed.directory(), file.directory());
@@ -282,7 +290,7 @@ fn growth_changes_the_directory_and_the_header() {
 
 #[test]
 fn resize_memory_reuses_an_identical_entry_and_drops_unused_ones() {
-    let mut file = load("saves/initial_game.sav");
+    let mut file = load("tests/saves/game/initial_game.sav");
     let flags = flag_table(&file);
     let ints = int_table(&file);
     let keys_of = |file: &IgbFile, id| match file.object(id).unwrap().fields[1] {
@@ -314,7 +322,7 @@ fn resize_memory_reuses_an_identical_entry_and_drops_unused_ones() {
 
 #[test]
 fn a_full_table_gives_an_error() {
-    let mut file = load("saves/initial_game.sav");
+    let mut file = load("tests/saves/game/initial_game.sav");
     let id = flag_table(&file);
     // a load factor above 1 lets the table fill up instead of growing
     *file.object_mut(id).unwrap().field_mut(4).unwrap() = FieldValue::Float(2.0f32.to_bits());
@@ -333,7 +341,7 @@ fn a_full_table_gives_an_error() {
 
 #[test]
 fn bad_inputs_give_errors() {
-    let mut file = load("saves/initial_game.sav");
+    let mut file = load("tests/saves/game/initial_game.sav");
     let id = flag_table(&file);
     let mut t = file.hash_table_mut(id).unwrap();
     assert_eq!(t.set(b"Flag", 256), Err(IgbError::ValueOutOfRange(256)));

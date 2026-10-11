@@ -6,7 +6,7 @@ The desktop and web app. It runs natively on Windows and Linux (eframe), and in 
 
 ```sh
 cargo run -p gui                        # empty window
-cargo run -p gui -- --open saves/0019.sav
+cargo run -p gui -- --open tests/saves/game/0019.sav
 ```
 
 Open a save with the **Open** button, by dropping the file onto the window, or with `--open`. Saving over a file first copies it to `<name>.<YYYYMMDD-HHMMSS>.bak` next to it.
@@ -86,13 +86,13 @@ The file dialogs go through the desktop portal (`xdg-desktop-portal`) over D-Bus
 
 ```sh
 nsane-save-editor --size 1280x800 --theme light --screenshot empty.png
-nsane-save-editor --open saves/0019.sav --select toadvillage --screenshot level.png
+nsane-save-editor --open tests/saves/game/0019.sav --select toadvillage --screenshot level.png
 ```
 
 `--screenshot` can be repeated to capture several files from one window. Each capture uses the `--theme` given before it:
 
 ```sh
-nsane-save-editor --open saves/0019.sav \
+nsane-save-editor --open tests/saves/game/0019.sav \
     --theme light --screenshot light.png \
     --theme dark --screenshot dark.png
 ```

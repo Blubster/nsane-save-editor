@@ -12,7 +12,13 @@ use nsane::igb::{IgbFile, SummaryValue};
 
 use super::*;
 use crate::prefs::tests::MemoryStorage;
-use crate::test_util::{repo_file, temp_dir};
+use crate::test_util::{corpus, repo_file, temp_dir};
+
+/// The save tested in game with 42 lives: 0018.sav with its lives set to 42,
+/// rebuilt from its recipe.
+fn lives42() -> Vec<u8> {
+    corpus::live("lives42").unwrap()
+}
 
 fn app(options: Options) -> App {
     App::with_context(&Context::default(), options)
@@ -107,7 +113,7 @@ fn backups(dir: &Path) -> Vec<PathBuf> {
 
 #[test]
 fn opens_a_switch_save_with_its_budget() {
-    let harness = harness(opening(repo_file("saves/0019.sav")));
+    let harness = harness(opening(repo_file("tests/saves/game/0019.sav")));
     assert!(harness.state().dialog.is_none());
     assert_eq!(doc(&harness).platform(), nsane::Platform::Switch);
     harness.get_by_label("Switch");
@@ -118,7 +124,7 @@ fn opens_a_switch_save_with_its_budget() {
 
 #[test]
 fn opens_a_pc_save_without_budget() {
-    let harness = harness(opening(repo_file("saves/ALCHEMYXSAVE_8.sav")));
+    let harness = harness(opening(repo_file("tests/saves/game/ALCHEMYXSAVE_8.sav")));
     assert_eq!(doc(&harness).platform(), nsane::Platform::Pc);
     harness.get_by_label("PC");
     assert!(harness.query_by_label_contains(" KB").is_none());
@@ -143,14 +149,14 @@ fn a_file_that_is_not_a_save_shows_an_error() {
 
 #[test]
 fn a_missing_file_shows_an_error() {
-    let harness = harness(opening(repo_file("saves/no_such_file.sav")));
+    let harness = harness(opening(repo_file("tests/saves/game/no_such_file.sav")));
     assert!(matches!(harness.state().dialog, Some(Dialog::Error { .. })));
 }
 
 #[test]
 fn a_truncated_save_does_not_panic_and_keeps_the_open_one() {
-    let bytes = fs::read(repo_file("saves/0019.sav")).unwrap();
-    let mut harness = harness(opening(repo_file("saves/0018.sav")));
+    let bytes = fs::read(repo_file("tests/saves/game/0019.sav")).unwrap();
+    let mut harness = harness(opening(repo_file("tests/saves/game/0018.sav")));
     // within the content: a Switch file's padding is not needed to read it
     for cut in [0, 4, 100, 1000, 20_000, 40_000] {
         harness
@@ -168,7 +174,7 @@ fn a_truncated_save_does_not_panic_and_keeps_the_open_one() {
 
 #[test]
 fn save_without_edits_is_byte_identical_and_backs_up() {
-    let path = scratch_copy("saves/0019.sav", "noop");
+    let path = scratch_copy("tests/saves/game/0019.sav", "noop");
     let dir = path.parent().unwrap().to_owned();
     let original = fs::read(&path).unwrap();
     let mut harness = harness(opening(path.clone()));
@@ -191,7 +197,7 @@ fn save_without_edits_is_byte_identical_and_backs_up() {
 
 #[test]
 fn lives_42_gives_the_file_tested_in_game() {
-    let path = scratch_copy("saves/0018.sav", "lives42");
+    let path = scratch_copy("tests/saves/game/0018.sav", "lives42");
     let mut harness = harness(opening(path.clone()));
     assert_eq!(lives(&harness), 5);
 
@@ -203,9 +209,8 @@ fn lives_42_gives_the_file_tested_in_game() {
 
     press(&mut harness, Modifiers::COMMAND, Key::S);
     confirm_review(&mut harness);
-    let tested = fs::read(repo_file("test_saves/lives42.sav")).unwrap();
     assert!(
-        fs::read(&path).unwrap() == tested,
+        fs::read(&path).unwrap() == lives42(),
         "byte-identical to lives42.sav"
     );
     assert!(!doc(&harness).is_dirty());
@@ -225,7 +230,7 @@ fn lives_42_gives_the_file_tested_in_game() {
 
 #[test]
 fn undoing_to_the_opened_state_clears_the_dirty_dot() {
-    let mut harness = harness(opening(repo_file("saves/0018.sav")));
+    let mut harness = harness(opening(repo_file("tests/saves/game/0018.sav")));
     type_lives(&mut harness, "42");
     harness.get_by_label("• 1 change");
     press(&mut harness, Modifiers::COMMAND, Key::Z);
@@ -239,7 +244,7 @@ fn undoing_to_the_opened_state_clears_the_dirty_dot() {
 
 #[test]
 fn a_drag_is_one_undo_step() {
-    let mut harness = harness(opening(repo_file("saves/0018.sav")));
+    let mut harness = harness(opening(repo_file("tests/saves/game/0018.sav")));
     let start = harness.get_by_role(Role::SpinButton).rect().center();
     harness.drag_at(start);
     harness.run_steps(1);
@@ -259,23 +264,20 @@ fn a_drag_is_one_undo_step() {
 
 #[test]
 fn typed_lives_are_clamped() {
-    let mut harness = harness(opening(repo_file("saves/0018.sav")));
+    let mut harness = harness(opening(repo_file("tests/saves/game/0018.sav")));
     type_lives(&mut harness, "999");
     assert_eq!(lives(&harness), 255);
 }
 
 #[test]
 fn save_shortcut_while_typing_includes_the_typed_value() {
-    let path = scratch_copy("saves/0018.sav", "typing");
+    let path = scratch_copy("tests/saves/game/0018.sav", "typing");
     let mut harness = harness(opening(path.clone()));
     start_typing_lives(&mut harness, "42");
     harness.key_press_modifiers(Modifiers::COMMAND, Key::S);
     harness.run_steps(3);
     confirm_review(&mut harness);
-    assert_eq!(
-        fs::read(&path).unwrap(),
-        fs::read(repo_file("test_saves/lives42.sav")).unwrap()
-    );
+    assert_eq!(fs::read(&path).unwrap(), lives42());
     assert!(!doc(&harness).is_dirty());
     fs::remove_dir_all(path.parent().unwrap()).unwrap();
 }
@@ -283,7 +285,8 @@ fn save_shortcut_while_typing_includes_the_typed_value() {
 #[test]
 fn out_of_range_lives_are_shown_as_they_are() {
     // as another tool could write it
-    let mut igb = IgbFile::parse(&fs::read(repo_file("saves/0018.sav")).unwrap()).unwrap();
+    let mut igb =
+        IgbFile::parse(&fs::read(repo_file("tests/saves/game/0018.sav")).unwrap()).unwrap();
     igb.summary_mut()
         .set("life_count", SummaryValue::Int(300))
         .unwrap();
@@ -306,7 +309,7 @@ fn out_of_range_lives_are_shown_as_they_are() {
 
 #[test]
 fn the_dirty_guard_asks_before_open() {
-    let mut harness = harness(opening(repo_file("saves/0018.sav")));
+    let mut harness = harness(opening(repo_file("tests/saves/game/0018.sav")));
     type_lives(&mut harness, "42");
     press(&mut harness, Modifiers::COMMAND, Key::O);
     assert_eq!(harness.state().dialog, Some(Dialog::Unsaved(Then::Open)));
@@ -317,7 +320,7 @@ fn the_dirty_guard_asks_before_open() {
     assert_eq!(lives(&harness), 42);
 
     // A dropped file asks too; Discard opens it.
-    let other = repo_file("saves/0019.sav");
+    let other = repo_file("tests/saves/game/0019.sav");
     harness
         .state_mut()
         .run(&Context::default(), vec![Action::OpenPath(other.clone())]);
@@ -353,7 +356,7 @@ fn the_dirty_guard_asks_before_close() {
             .is_some_and(|v| v.commands.contains(&ViewportCommand::CancelClose))
     }
 
-    let mut harness = harness(opening(repo_file("saves/0018.sav")));
+    let mut harness = harness(opening(repo_file("tests/saves/game/0018.sav")));
     request_close(&mut harness);
     assert!(!close_cancelled(&harness), "clean: closes");
     assert!(harness.state().dialog.is_none());
@@ -372,7 +375,7 @@ fn the_dirty_guard_asks_before_close() {
 
 #[test]
 fn shortcuts_wait_while_a_dialog_is_open() {
-    let mut harness = harness(opening(repo_file("saves/0018.sav")));
+    let mut harness = harness(opening(repo_file("tests/saves/game/0018.sav")));
     type_lives(&mut harness, "42");
     harness.state_mut().error("Test", "message");
     press(&mut harness, Modifiers::COMMAND, Key::Z);
@@ -381,7 +384,7 @@ fn shortcuts_wait_while_a_dialog_is_open() {
 
 #[test]
 fn a_switch_save_that_outgrows_its_file_is_not_written() {
-    let path = scratch_copy("saves/0018.sav", "too-big");
+    let path = scratch_copy("tests/saves/game/0018.sav", "too-big");
     let dir = path.parent().unwrap().to_owned();
     let original = fs::read(&path).unwrap();
     let mut harness = harness(opening(path.clone()));
@@ -406,7 +409,7 @@ fn a_switch_save_that_outgrows_its_file_is_not_written() {
 #[test]
 fn the_unsaved_view_and_a_selected_level() {
     let harness = harness(app(Options {
-        open: Some(repo_file("saves/0019.sav")),
+        open: Some(repo_file("tests/saves/game/0019.sav")),
         view: Some(View::Unsaved),
         select: LevelId::from_key("toadvillage"),
         ..Options::default()
@@ -419,7 +422,7 @@ fn the_unsaved_view_and_a_selected_level() {
 
 #[test]
 fn crash_1_and_2_are_disabled() {
-    let harness = harness(opening(repo_file("saves/0019.sav")));
+    let harness = harness(opening(repo_file("tests/saves/game/0019.sav")));
     for title in ["Crash Bandicoot", "Crash 2: Cortex Strikes Back"] {
         assert!(harness.get_by_label(title).accesskit_node().is_disabled());
     }
@@ -433,7 +436,7 @@ fn crash_1_and_2_are_disabled() {
 
 #[test]
 fn narrow_windows_collapse_the_side_panels() {
-    let mut harness = harness(opening(repo_file("saves/0019.sav")));
+    let mut harness = harness(opening(repo_file("tests/saves/game/0019.sav")));
     harness.get_by_role(Role::SpinButton);
     harness.set_size(Vec2::new(600.0, 800.0));
     harness.run_steps(2);
@@ -445,8 +448,8 @@ fn narrow_windows_collapse_the_side_panels() {
 
 #[test]
 fn a_dropped_file_asks_before_replacing_unsaved_changes() {
-    let bytes = fs::read(repo_file("saves/0019.sav")).unwrap();
-    let mut harness = harness(opening(repo_file("saves/0018.sav")));
+    let bytes = fs::read(repo_file("tests/saves/game/0019.sav")).unwrap();
+    let mut harness = harness(opening(repo_file("tests/saves/game/0018.sav")));
     type_lives(&mut harness, "42");
     let drop = Action::OpenBytes {
         name: "0019.sav".into(),
@@ -493,7 +496,7 @@ fn theme_and_panels_survive_a_restart() {
     let mut storage = MemoryStorage::default();
     let mut first = harness(app_with_storage(
         &storage,
-        opening_options("saves/0019.sav"),
+        opening_options("tests/saves/game/0019.sav"),
     ));
     let dark = first.state().dark;
     first.set_size(Vec2::new(600.0, 800.0));
@@ -508,7 +511,7 @@ fn theme_and_panels_survive_a_restart() {
     eframe::App::save(first.state_mut(), &mut storage);
     drop(first);
 
-    let second = app_with_storage(&storage, opening_options("saves/0019.sav"));
+    let second = app_with_storage(&storage, opening_options("tests/saves/game/0019.sav"));
     assert_eq!(second.dark, !dark);
     assert!(second.prefs.show_overview && !second.prefs.show_details);
     let mut second = harness(second);
@@ -533,7 +536,7 @@ fn theme_and_panels_survive_a_restart() {
 #[test]
 fn settings_are_not_kept_without_storage() {
     // as in screenshot runs and the other tests
-    let mut harness = harness(opening(repo_file("saves/0019.sav")));
+    let mut harness = harness(opening(repo_file("tests/saves/game/0019.sav")));
     let dark = harness.state().dark;
     harness.get_by_label(if dark { "☀" } else { "🌙" }).click();
     harness.run_steps(2);
@@ -544,7 +547,7 @@ fn settings_are_not_kept_without_storage() {
 
 #[test]
 fn the_last_folder_is_remembered() {
-    let path = scratch_copy("saves/0018.sav", "last-dir");
+    let path = scratch_copy("tests/saves/game/0018.sav", "last-dir");
     let dir = path.parent().unwrap().to_owned();
     let mut harness = harness(opening(path.clone()));
     assert_eq!(
@@ -615,7 +618,7 @@ fn sha256_hex(data: &[u8]) -> String {
 
 #[test]
 fn a_crystal_click_is_one_undo_step_and_matches_the_golden_output() {
-    let mut harness = harness(opening(repo_file("saves/0019.sav")));
+    let mut harness = harness(opening(repo_file("tests/saves/game/0019.sav")));
     let deep_trouble = level("deeptrouble");
     harness.get_by_label("10 / 25");
     harness.get_by_label("19%");
@@ -641,7 +644,7 @@ fn a_crystal_click_is_one_undo_step_and_matches_the_golden_output() {
 
 #[test]
 fn every_collectible_toggle_is_one_edit() {
-    let mut harness = harness(opening(repo_file("saves/0019.sav")));
+    let mut harness = harness(opening(repo_file("tests/saves/game/0019.sav")));
     for (label, expected) in [
         ("Deep Trouble: clear gem", "Deep Trouble: clear gem on"),
         ("Deep Trouble: red gem", "Deep Trouble: red gem on"),
@@ -672,7 +675,7 @@ fn every_collectible_toggle_is_one_edit() {
 #[test]
 fn the_relic_cycles_on_click_and_is_picked_on_right_click() {
     use nsane::crash3::Relic;
-    let mut harness = harness(opening(repo_file("saves/0019.sav")));
+    let mut harness = harness(opening(repo_file("tests/saves/game/0019.sav")));
     let toad = level("toadvillage");
     let relic = |h: &Harness<'_, App>| doc(h).current().relic(toad);
     assert_eq!(relic(&harness), Some(Relic::Gold));
@@ -700,7 +703,7 @@ fn the_relic_cycles_on_click_and_is_picked_on_right_click() {
 
 #[test]
 fn a_level_name_selects_it() {
-    let mut harness = harness(opening(repo_file("saves/0019.sav")));
+    let mut harness = harness(opening(repo_file("tests/saves/game/0019.sav")));
     assert_eq!(harness.state().selected, None);
     click(&mut harness, "Deep Trouble");
     assert_eq!(harness.state().selected, Some(level("deeptrouble")));
@@ -709,7 +712,7 @@ fn a_level_name_selects_it() {
 
 #[test]
 fn the_secret_room_locks_follow_the_relic_count() {
-    let mut harness = tall_harness(opening(repo_file("saves/0019.sav")));
+    let mut harness = tall_harness(opening(repo_file("tests/saves/game/0019.sav")));
     // One relic: every level of the secret room is locked.
     for name in ["26 Ski Crazed", "28 Area 51?", "30 Rings of Power"] {
         harness.get_by_label(&format!("{name}: locked"));
@@ -723,7 +726,7 @@ fn the_secret_room_locks_follow_the_relic_count() {
     harness.get_by_label("27 Hang'em High: locked");
     harness.get_by_label("28 Area 51?: locked");
 
-    let harness = tall_harness(opening(repo_file("test_saves/t6_after.sav")));
+    let harness = tall_harness(opening(repo_file("tests/saves/after_edit/t6_after.sav")));
     for name in [
         "26 Ski Crazed",
         "27 Hang'em High",
@@ -737,7 +740,7 @@ fn the_secret_room_locks_follow_the_relic_count() {
 
 #[test]
 fn the_entrance_rows_select_their_level() {
-    let mut harness = tall_harness(opening(repo_file("saves/0019.sav")));
+    let mut harness = tall_harness(opening(repo_file("tests/saves/game/0019.sav")));
     click(&mut harness, "Hang'em High (alt.)");
     assert_eq!(harness.state().selected, Some(level("hangemhigh")));
     click(&mut harness, "Future Frenzy (alt.)");
@@ -747,7 +750,7 @@ fn the_entrance_rows_select_their_level() {
 
 #[test]
 fn the_portal_glitch_shows_on_its_room() {
-    let harness = harness(opening(repo_file("test_saves/t4_crystals.sav")));
+    let harness = harness(opening(repo_file("tests/saves/edited/t4_crystals.sav")));
     let message = doc(&harness)
         .diagnostics()
         .iter()
@@ -761,10 +764,10 @@ fn the_portal_glitch_shows_on_its_room() {
 
 #[test]
 fn the_bonus_gem_badge_shows_when_it_is_due() {
-    let harness = harness(opening(repo_file("test_saves/t7_bonus_gem.sav")));
+    let harness = harness(opening(repo_file("tests/saves/edited/t7_bonus_gem.sav")));
     assert!(doc(&harness).current().bonus_gem_due());
     harness.get_by_label("due");
-    let harness = self::harness(opening(repo_file("saves/0019.sav")));
+    let harness = self::harness(opening(repo_file("tests/saves/game/0019.sav")));
     assert!(harness.query_by_label("due").is_none());
 }
 
@@ -823,7 +826,7 @@ fn session_values(save: &nsane::crash3::Crash3Save, level: LevelId) -> Vec<Strin
 #[test]
 fn the_panel_gives_the_gold_relic_the_game_wrote() {
     use nsane::crash3::Crash3Save;
-    let mut harness = harness(app(selecting("saves/0010.sav", "toadvillage")));
+    let mut harness = harness(app(selecting("tests/saves/game/0010.sav", "toadvillage")));
     let toad = level("toadvillage");
     harness.get_by_label("Time trial");
     click(&mut harness, "Gold");
@@ -835,7 +838,8 @@ fn the_panel_gives_the_gold_relic_the_game_wrote() {
             "Toad Village: times 0:55.44, 1:00.23"
         ]
     );
-    let expected = Crash3Save::parse(&fs::read(repo_file("saves/0011.sav")).unwrap()).unwrap();
+    let expected =
+        Crash3Save::parse(&fs::read(repo_file("tests/saves/game/0011.sav")).unwrap()).unwrap();
     let save = doc(&harness).current();
     assert_eq!(session_values(save, toad), session_values(&expected, toad));
     // The game also counted the finish, which no edit writes.
@@ -847,7 +851,7 @@ fn the_panel_gives_the_gold_relic_the_game_wrote() {
 
 #[test]
 fn invalid_times_are_refused_and_valid_ones_are_one_step_each() {
-    let mut harness = harness(app(selecting("saves/0019.sav", "toadvillage")));
+    let mut harness = harness(app(selecting("tests/saves/game/0019.sav", "toadvillage")));
     let toad = level("toadvillage");
     for text in ["1:7x", "99:99:99", "-1", "100:00.00"] {
         type_time(&mut harness, 2, text);
@@ -881,7 +885,7 @@ fn invalid_times_are_refused_and_valid_ones_are_one_step_each() {
 #[test]
 fn fill_a_time_and_set_the_relic_from_the_best_time() {
     use nsane::crash3::Relic;
-    let mut harness = harness(app(selecting("saves/0019.sav", "toadvillage")));
+    let mut harness = harness(app(selecting("tests/saves/game/0019.sav", "toadvillage")));
     let toad = level("toadvillage");
     click(&mut harness, "Platinum");
     click(&mut harness, "Fill a time for this relic");
@@ -901,7 +905,10 @@ fn fill_a_time_and_set_the_relic_from_the_best_time() {
 
 #[test]
 fn reset_asks_first_and_undo_restores_the_level() {
-    let mut harness = harness(app(selecting("test_saves/t6_after.sav", "deeptrouble")));
+    let mut harness = harness(app(selecting(
+        "tests/saves/after_edit/t6_after.sav",
+        "deeptrouble",
+    )));
     let deep = level("deeptrouble");
     let before = doc(&harness).current().totals();
     assert!(doc(&harness).current().entered(deep));
@@ -931,7 +938,7 @@ fn reset_asks_first_and_undo_restores_the_level() {
 #[test]
 fn the_boss_panel_toggles_defeat_ability_and_scenes() {
     use nsane::crash3::Ability;
-    let mut harness = harness(app(selecting("saves/0019.sav", "ngin")));
+    let mut harness = harness(app(selecting("tests/saves/game/0019.sav", "ngin")));
     let ngin = level("ngin");
     click(&mut harness, "Defeated");
     click(&mut harness, "Ability: Fruit Bazooka");
@@ -949,7 +956,7 @@ fn the_boss_panel_toggles_defeat_ability_and_scenes() {
 fn the_invalid_time_view_shows_a_refused_entry() {
     let options = Options {
         view: Some(View::InvalidTime),
-        ..selecting("saves/0019.sav", "toadvillage")
+        ..selecting("tests/saves/game/0019.sav", "toadvillage")
     };
     let mut harness = harness(app(options));
     assert_eq!(time_field(&harness, 2).value().as_deref(), Some("1:7x"));
@@ -980,7 +987,7 @@ fn open_dialog(harness: &mut Harness<'_, App>, label: &str) {
 #[test]
 fn unlocking_room_4_matches_the_golden_output() {
     use crate::games::crash3::Tab;
-    let mut harness = progress_harness("saves/0019.sav");
+    let mut harness = progress_harness("tests/saves/game/0019.sav");
     assert_eq!(harness.state().crash3.tab(), Tab::Progress);
     // Rooms 1–3 are open on 0019: only rooms 4 and 5 offer an unlock.
     assert!(harness.query_by_label("Unlock up to room 3…").is_none());
@@ -1020,7 +1027,7 @@ fn unlocking_room_4_matches_the_golden_output() {
 
 #[test]
 fn the_preview_runs_only_when_the_options_change() {
-    let mut harness = progress_harness("saves/0019.sav");
+    let mut harness = progress_harness("tests/saves/game/0019.sav");
     open_dialog(&mut harness, "Unlock up to room 5…");
     harness.run_steps(5);
     assert_eq!(harness.state().crash3.preview_runs(), Some(1));
@@ -1035,7 +1042,7 @@ fn the_preview_runs_only_when_the_options_change() {
     assert!(save.ability(nsane::crash3::Ability::Bazooka));
 
     // Cancel applies nothing.
-    let mut harness = progress_harness("saves/0019.sav");
+    let mut harness = progress_harness("tests/saves/game/0019.sav");
     open_dialog(&mut harness, "Unlock up to room 4…");
     click(&mut harness, "Cancel");
     assert!(!harness.state().crash3.has_dialog());
@@ -1046,7 +1053,7 @@ fn the_preview_runs_only_when_the_options_change() {
 fn skip_all_story_scenes_leaves_the_18_scene_keys() {
     use nsane::crash3::CUTSCENES;
     use nsane::crash3::tables::{cutscene_key, cutscene_name};
-    let mut harness = progress_harness("saves/0019.sav");
+    let mut harness = progress_harness("tests/saves/game/0019.sav");
     click(&mut harness, "Skip all story scenes");
     assert_eq!(history(&harness), ["All story scenes: seen"]);
     let scenes: Vec<String> = doc(&harness)
@@ -1074,7 +1081,7 @@ fn skip_all_story_scenes_leaves_the_18_scene_keys() {
 
 #[test]
 fn opening_the_secret_room_up_to_29() {
-    let mut harness = progress_harness("saves/0019.sav");
+    let mut harness = progress_harness("tests/saves/game/0019.sav");
     open_dialog(&mut harness, "Open up to 29…");
     harness.get_by_label("Relics: 1 → 20");
     click(&mut harness, "Apply");
@@ -1099,7 +1106,7 @@ fn opening_the_secret_room_up_to_29() {
 #[test]
 fn super_powers_and_scenes_are_one_step_each() {
     use nsane::crash3::{ABILITIES, Ability};
-    let mut harness = progress_harness("saves/0019.sav");
+    let mut harness = progress_harness("tests/saves/game/0019.sav");
     click(&mut harness, "Super power: Speed Shoes");
     assert!(doc(&harness).current().ability(Ability::SpeedShoes));
     click(&mut harness, "All on");
@@ -1156,7 +1163,7 @@ fn the_progress_views() {
     use crate::games::crash3::Tab;
     let options = |view| Options {
         view: Some(view),
-        ..opening_options("saves/0019.sav")
+        ..opening_options("tests/saves/game/0019.sav")
     };
     let harness = harness(app(options(View::UnlockDialog)));
     assert!(harness.state().crash3.has_dialog());
@@ -1187,7 +1194,7 @@ fn serious_diagnostics(harness: &Harness<'_, App>) -> Vec<&'static str> {
 
 #[test]
 fn complete_everything_from_the_presets_menu() {
-    let mut harness = tall_harness(opening(repo_file("saves/0019.sav")));
+    let mut harness = tall_harness(opening(repo_file("tests/saves/game/0019.sav")));
     open_preset(&mut harness, "Complete everything (108%)…");
     assert!(harness.state().crash3.has_dialog());
     harness.get_by_label("Percentage: 19% → 108%");
@@ -1211,7 +1218,7 @@ fn complete_everything_from_the_presets_menu() {
 
 #[test]
 fn story_up_to_warp_room_3_with_gems() {
-    let mut harness = tall_harness(opening(repo_file("saves/initial_game.sav")));
+    let mut harness = tall_harness(opening(repo_file("tests/saves/game/initial_game.sav")));
     open_preset(&mut harness, "Story up to warp room…");
     // A new game starts at room 1; pick room 3.
     harness.get_by_label("Story up to warp room 1");
@@ -1247,7 +1254,7 @@ fn fixed_field<'a>(harness: &'a Harness<'_, App>, text: &'a str) -> egui_kittest
 
 #[test]
 fn a_fixed_time_that_does_not_parse_disables_apply() {
-    let mut harness = tall_harness(opening(repo_file("saves/0019.sav")));
+    let mut harness = tall_harness(opening(repo_file("tests/saves/game/0019.sav")));
     open_preset(&mut harness, "All relics at a tier…");
     click(&mut harness, "Write this time on every level:");
     harness.run_steps(2);
@@ -1271,7 +1278,7 @@ fn a_fixed_time_that_does_not_parse_disables_apply() {
 
 #[test]
 fn the_portal_glitch_fix_and_undo() {
-    let mut harness = tall_harness(opening(repo_file("test_saves/t4_crystals.sav")));
+    let mut harness = tall_harness(opening(repo_file("tests/saves/edited/t4_crystals.sav")));
     let glitch = |harness: &Harness<'_, App>| {
         doc(harness)
             .diagnostics()
@@ -1301,7 +1308,7 @@ fn the_portal_glitch_fix_and_undo() {
 fn show_selects_the_level_of_a_diagnostic() {
     let mut harness = tall_harness(app(Options {
         view: Some(View::Diagnostics),
-        ..opening_options("test_saves/t1_relics.sav")
+        ..opening_options("tests/saves/edited/t1_relics.sav")
     }));
     let level = doc(&harness)
         .diagnostics()
@@ -1325,7 +1332,7 @@ fn show_selects_the_level_of_a_diagnostic() {
 #[test]
 fn the_save_review_of_a_session_on_0019() {
     use nsane::crash3::Ability;
-    let path = scratch_copy("saves/0019.sav", "review");
+    let path = scratch_copy("tests/saves/game/0019.sav", "review");
     let dir = path.parent().unwrap().to_owned();
     let mut harness = tall_harness(opening(path.clone()));
     type_lives(&mut harness, "42");
@@ -1376,7 +1383,7 @@ fn the_save_review_of_a_session_on_0019() {
 
 #[test]
 fn the_review_can_be_turned_off_and_on() {
-    let path = scratch_copy("saves/0018.sav", "no-review");
+    let path = scratch_copy("tests/saves/game/0018.sav", "no-review");
     let dir = path.parent().unwrap().to_owned();
     let mut harness = harness(opening(path.clone()));
     // Nothing to review: Save writes at once.
@@ -1406,8 +1413,8 @@ fn the_review_can_be_turned_off_and_on() {
 
 #[test]
 fn the_unsaved_question_saves_through_the_review_then_opens() {
-    let path = scratch_copy("saves/0018.sav", "unsaved-review");
-    let other = repo_file("saves/0019.sav");
+    let path = scratch_copy("tests/saves/game/0018.sav", "unsaved-review");
+    let other = repo_file("tests/saves/game/0019.sav");
     let mut harness = harness(opening(path.clone()));
     type_lives(&mut harness, "42");
     harness
@@ -1422,17 +1429,14 @@ fn the_unsaved_question_saves_through_the_review_then_opens() {
     };
     assert_eq!(*then, Some(Then::OpenPath(other)));
     confirm_review(&mut harness);
-    assert_eq!(
-        fs::read(&path).unwrap(),
-        fs::read(repo_file("test_saves/lives42.sav")).unwrap()
-    );
+    assert_eq!(fs::read(&path).unwrap(), lives42());
     assert_eq!(doc(&harness).file_name(), Some("0019.sav"));
     fs::remove_dir_all(path.parent().unwrap()).unwrap();
 }
 
 #[test]
 fn an_error_diagnostic_disables_save() {
-    let mut harness = harness(opening(repo_file("saves/0018.sav")));
+    let mut harness = harness(opening(repo_file("tests/saves/game/0018.sav")));
     let edits: Vec<_> = (0..40)
         .map(|i| Edit::RawFlagSet {
             key: format!("{i}_{}", "x".repeat(4000)),
@@ -1463,7 +1467,7 @@ fn an_error_diagnostic_disables_save() {
 
 #[test]
 fn the_history_goes_back_and_forward() {
-    let mut harness = harness(opening(repo_file("saves/0018.sav")));
+    let mut harness = harness(opening(repo_file("tests/saves/game/0018.sav")));
     assert!(
         harness
             .get_by_label("History")
@@ -1492,18 +1496,21 @@ fn the_preset_diagnostics_and_review_views() {
         view: Some(view),
         ..opening_options(rel)
     };
-    let mut harness = harness(app(options("saves/0019.sav", View::PresetAll)));
+    let mut harness = harness(app(options("tests/saves/game/0019.sav", View::PresetAll)));
     harness.run_steps(4);
     harness.get_by_label("Complete everything (108%)");
-    let mut harness = self::harness(app(options("saves/0019.sav", View::PresetStory3)));
+    let mut harness = self::harness(app(options(
+        "tests/saves/game/0019.sav",
+        View::PresetStory3,
+    )));
     harness.run_steps(4);
     harness.get_by_label("Story up to warp room 3");
     let harness = self::harness(app(options(
-        "test_saves/t4_crystals.sav",
+        "tests/saves/edited/t4_crystals.sav",
         View::Diagnostics,
     )));
     assert!(harness.state().crash3.diagnostics_open());
-    let harness = self::harness(app(options("saves/0019.sav", View::SaveReview)));
+    let harness = self::harness(app(options("tests/saves/game/0019.sav", View::SaveReview)));
     assert!(matches!(
         harness.state().dialog,
         Some(Dialog::Review { .. })
@@ -1522,14 +1529,14 @@ fn edits_from_a_json_file_are_applied_at_start() {
     .unwrap();
     let harness = harness(app(Options {
         apply: Some(edits.clone()),
-        ..opening_options("saves/0019.sav")
+        ..opening_options("tests/saves/game/0019.sav")
     }));
     assert_eq!(history(&harness), ["Lives: 42", "Deep Trouble: crystal on"]);
 
     fs::write(&edits, r#"[{"op": "set_lives"}]"#).unwrap();
     let harness = self::harness(app(Options {
         apply: Some(edits),
-        ..opening_options("saves/0019.sav")
+        ..opening_options("tests/saves/game/0019.sav")
     }));
     assert!(matches!(harness.state().dialog, Some(Dialog::Error { .. })));
     assert!(history(&harness).is_empty());
@@ -1575,11 +1582,13 @@ fn click_with_dialog(harness: &mut Harness<'_, App>, label: &str, path: PathBuf)
 
 #[test]
 fn converting_0019_to_pc_and_back() {
-    let template = scratch_copy("saves/ALCHEMYXSAVE_8.sav", "convert");
+    let template = scratch_copy("tests/saves/game/ALCHEMYXSAVE_8.sav", "convert");
     let dir = template.parent().unwrap().to_owned();
-    let source =
-        nsane::crash3::Crash3Save::parse(&fs::read(repo_file("saves/0019.sav")).unwrap()).unwrap();
-    let mut harness = tall_harness(opening(repo_file("saves/0019.sav")));
+    let source = nsane::crash3::Crash3Save::parse(
+        &fs::read(repo_file("tests/saves/game/0019.sav")).unwrap(),
+    )
+    .unwrap();
+    let mut harness = tall_harness(opening(repo_file("tests/saves/game/0019.sav")));
     assert!(harness.query_by_label("Convert to Switch…").is_none());
     open_dialog(&mut harness, "Convert to PC…");
     assert_eq!(convert(&harness).target, nsane::Platform::Pc);
@@ -1607,7 +1616,7 @@ fn converting_0019_to_pc_and_back() {
     assert_eq!(backups(&dir).len(), 1);
     assert_eq!(
         fs::read(&backups(&dir)[0]).unwrap(),
-        fs::read(repo_file("saves/ALCHEMYXSAVE_8.sav")).unwrap()
+        fs::read(repo_file("tests/saves/game/ALCHEMYXSAVE_8.sav")).unwrap()
     );
     let pc_bytes = fs::read(&template).unwrap();
     let pc = nsane::crash3::Crash3Save::parse(&pc_bytes).unwrap();
@@ -1644,9 +1653,13 @@ fn converting_0019_to_pc_and_back() {
 
 #[test]
 fn a_wrong_template_is_refused_inline() {
-    let mut harness = tall_harness(opening(repo_file("saves/0019.sav")));
+    let mut harness = tall_harness(opening(repo_file("tests/saves/game/0019.sav")));
     open_dialog(&mut harness, "Convert to PC…");
-    click_with_dialog(&mut harness, "Pick file…", repo_file("saves/0018.sav"));
+    click_with_dialog(
+        &mut harness,
+        "Pick file…",
+        repo_file("tests/saves/game/0018.sav"),
+    );
     harness.get_by_label(
         "0018.sav is a Switch save, like the one being converted. Pick a save from the PC \
          version.",
@@ -1670,7 +1683,11 @@ fn a_wrong_template_is_refused_inline() {
     assert!(disabled(&harness, "Convert…"));
 
     // A picked file that can't be read.
-    click_with_dialog(&mut harness, "Pick file…", repo_file("saves/missing.sav"));
+    click_with_dialog(
+        &mut harness,
+        "Pick file…",
+        repo_file("tests/saves/game/missing.sav"),
+    );
     harness.get_by_label_contains("Can't read missing.sav");
     assert!(disabled(&harness, "Convert…"));
     click(&mut harness, "Cancel");
@@ -1679,7 +1696,7 @@ fn a_wrong_template_is_refused_inline() {
 
 #[test]
 fn unsaved_edits_are_converted() {
-    let mut harness = tall_harness(opening(repo_file("saves/0019.sav")));
+    let mut harness = tall_harness(opening(repo_file("tests/saves/game/0019.sav")));
     type_lives(&mut harness, "42");
     open_dialog(&mut harness, "Convert to PC…");
     settle_click(&mut harness, "Built-in new-game template");
@@ -1706,8 +1723,8 @@ fn unsaved_edits_are_converted() {
 fn the_convert_view_picks_the_template() {
     let mut harness = tall_harness(app(Options {
         view: Some(View::Convert),
-        template: Some(repo_file("saves/ALCHEMYXSAVE_8.sav")),
-        ..opening_options("saves/0019.sav")
+        template: Some(repo_file("tests/saves/game/ALCHEMYXSAVE_8.sav")),
+        ..opening_options("tests/saves/game/0019.sav")
     }));
     harness.run_steps(4);
     assert_eq!(
@@ -1746,8 +1763,8 @@ fn harness_with_view(view: View) -> Harness<'static, App> {
 
 #[test]
 fn leftover_bytes_as_the_last_level_show_as_unknown() {
-    let leftover = harness(opening(repo_file("test_saves/round8/l2_after.sav")));
+    let leftover = harness(opening(repo_file("tests/saves/after_edit/l2_after.sav")));
     leftover.get_by_label("Last level played: unknown");
-    let playthrough = harness(opening(repo_file("saves/0019.sav")));
+    let playthrough = harness(opening(repo_file("tests/saves/game/0019.sav")));
     playthrough.get_by_label("Last level played: Toad Village");
 }

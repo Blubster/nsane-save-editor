@@ -238,11 +238,11 @@ mod tests {
     fn parses_the_document_flags() {
         let o = parse(&[
             "--open",
-            "saves/0019.sav",
+            "tests/saves/game/0019.sav",
             "--apply",
             "edits.json",
             "--template",
-            "saves/ALCHEMYXSAVE_8.sav",
+            "tests/saves/game/ALCHEMYXSAVE_8.sav",
             "--export-icon",
             "assets",
             "--select",
@@ -253,9 +253,12 @@ mod tests {
             "out.png",
         ])
         .unwrap();
-        assert_eq!(o.open, Some("saves/0019.sav".into()));
+        assert_eq!(o.open, Some("tests/saves/game/0019.sav".into()));
         assert_eq!(o.apply, Some("edits.json".into()));
-        assert_eq!(o.template, Some("saves/ALCHEMYXSAVE_8.sav".into()));
+        assert_eq!(
+            o.template,
+            Some("tests/saves/game/ALCHEMYXSAVE_8.sav".into())
+        );
         assert_eq!(o.export_icon, Some("assets".into()));
         assert_eq!(o.select, LevelId::from_key("toadvillage"));
         assert_eq!(o.view, Some(View::Unsaved));

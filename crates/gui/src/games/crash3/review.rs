@@ -83,7 +83,7 @@ mod tests {
     /// its row also says it now is.
     #[test]
     fn the_review_of_a_session_on_0019() {
-        let bytes = std::fs::read(repo_file("saves/0019.sav")).unwrap();
+        let bytes = std::fs::read(repo_file("tests/saves/game/0019.sav")).unwrap();
         let mut doc = Document::open(&bytes, Some("0019.sav".into())).unwrap();
         let deep = LevelId::from_key("deeptrouble").unwrap();
         for edit in [

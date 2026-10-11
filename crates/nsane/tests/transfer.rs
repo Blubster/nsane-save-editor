@@ -1,8 +1,6 @@
 //! Switch ↔ PC conversion: the game data moves into a save of the other
 //! platform and comes back unchanged (`docs/FORMAT.md` §1).
 
-use std::path::{Path, PathBuf};
-
 use nsane::Platform;
 use nsane::crash3::{ABILITIES, CUTSCENES, Crash3Save, LevelId};
 use nsane::diff::diff;
@@ -13,37 +11,24 @@ use nsane::transfer::{
 
 const SWITCH_SIZE: usize = 153_600;
 
-fn repo() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
+#[path = "support/corpus.rs"]
+mod corpus;
 
+/// A save under `tests/saves/`, or `live/<name>`, a save rebuilt from its
+/// recipe.
 fn read(rel: &str) -> Vec<u8> {
-    let path = repo().join(rel);
-    std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+    corpus::input(rel).unwrap_or_else(|e| panic!("{e}"))
 }
 
 fn load(rel: &str) -> Crash3Save {
     Crash3Save::parse(&read(rel)).unwrap_or_else(|e| panic!("{rel}: {e}"))
 }
 
-fn saves(dir: &Path, out: &mut Vec<PathBuf>) {
-    for entry in std::fs::read_dir(dir).unwrap() {
-        let path = entry.unwrap().path();
-        if path.is_dir() {
-            saves(&path, out);
-        } else if path.extension().is_some_and(|e| e == "sav") {
-            out.push(path);
-        }
-    }
-}
-
-fn all_saves() -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    saves(&repo().join("saves"), &mut out);
-    saves(&repo().join("test_saves"), &mut out);
-    out.sort();
-    assert_eq!(out.len(), 76);
-    out
+fn all_saves() -> Vec<corpus::Save> {
+    let saves = corpus::corpus();
+    // 51 files under tests/saves/ and 24 saves rebuilt from their recipe
+    assert_eq!(saves.len(), 75);
+    saves
 }
 
 fn template(platform: Platform) -> Crash3Save {
@@ -116,11 +101,11 @@ fn other_data(save: &Crash3Save) -> Vec<FieldValue> {
 fn bundled_templates_are_the_new_game_saves() {
     assert_eq!(
         bundled_template(Platform::Switch),
-        read("saves/initial_game.sav")
+        read("tests/saves/game/initial_game.sav")
     );
     assert_eq!(
         bundled_template(Platform::Pc),
-        read("saves/ALCHEMYXSAVE_8.sav")
+        read("tests/saves/game/ALCHEMYXSAVE_8.sav")
     );
     assert_eq!(Platform::of(&template(Platform::Switch)), Platform::Switch);
     assert_eq!(Platform::of(&template(Platform::Pc)), Platform::Pc);
@@ -129,8 +114,8 @@ fn bundled_templates_are_the_new_game_saves() {
 #[test]
 fn pc_and_switch_hold_the_same_game_data() {
     let (pc, switch) = (
-        load("saves/ALCHEMYXSAVE_8.sav"),
-        load("saves/initial_game.sav"),
+        load("tests/saves/game/ALCHEMYXSAVE_8.sav"),
+        load("tests/saves/game/initial_game.sav"),
     );
     assert_eq!(pc.igb().strings(), switch.igb().strings());
     assert_eq!(pc.igb().summary(), switch.igb().summary());
@@ -166,8 +151,14 @@ fn pc_and_switch_hold_the_same_game_data() {
 #[test]
 fn new_game_converts_to_the_other_new_game_byte_for_byte() {
     for (from, to) in [
-        ("saves/initial_game.sav", "saves/ALCHEMYXSAVE_8.sav"),
-        ("saves/ALCHEMYXSAVE_8.sav", "saves/initial_game.sav"),
+        (
+            "tests/saves/game/initial_game.sav",
+            "tests/saves/game/ALCHEMYXSAVE_8.sav",
+        ),
+        (
+            "tests/saves/game/ALCHEMYXSAVE_8.sav",
+            "tests/saves/game/initial_game.sav",
+        ),
     ] {
         let mut out = transfer(&load(from), &load(to)).unwrap();
         assert!(out.to_bytes().unwrap() == read(to), "{from} → {to}");
@@ -176,9 +167,9 @@ fn new_game_converts_to_the_other_new_game_byte_for_byte() {
 
 #[test]
 fn every_save_survives_a_round_trip() {
-    for path in all_saves() {
-        let name = path.strip_prefix(repo()).unwrap().display().to_string();
-        let source = load(&name);
+    for save in all_saves() {
+        let name = save.source;
+        let source = Crash3Save::parse(&save.bytes).unwrap_or_else(|e| panic!("{name}: {e}"));
         let home = Platform::of(&source);
         let expected = summarized(&source);
 
@@ -200,7 +191,7 @@ fn every_save_survives_a_round_trip() {
 
 #[test]
 fn output_takes_the_target_size_rules() {
-    let full = load("test_saves/t6_after.sav");
+    let full = load("tests/saves/after_edit/t6_after.sav");
     let (bytes, _) = convert(&full, Platform::Pc);
     let template = bundled_template(Platform::Pc);
     assert!(bytes.len() > template.len(), "{}", bytes.len());
@@ -208,15 +199,15 @@ fn output_takes_the_target_size_rules() {
     let reparsed = Crash3Save::parse(&bytes).unwrap();
     assert_eq!(reparsed.igb().build_unpadded().unwrap().len(), bytes.len());
 
-    let (bytes, _) = convert(&load("test_saves/pc/pc2_full108.sav"), Platform::Switch);
+    let (bytes, _) = convert(&load("live/pc2_full108"), Platform::Switch);
     assert_eq!(bytes.len(), SWITCH_SIZE);
 }
 
 #[test]
 fn converted_save_shows_the_same_progress() {
     for (rel, platform) in [
-        ("saves/0019.sav", Platform::Pc),
-        ("test_saves/t6_after.sav", Platform::Pc),
+        ("tests/saves/game/0019.sav", Platform::Pc),
+        ("tests/saves/after_edit/t6_after.sav", Platform::Pc),
     ] {
         let source = load(rel);
         let (_, out) = convert(&source, platform);
@@ -261,14 +252,14 @@ fn converted_save_shows_the_same_progress() {
 
 #[test]
 fn a_same_platform_template_changes_nothing() {
-    let source = load("saves/0019.sav");
-    let out = transfer(&source, &load("saves/0005.sav")).unwrap();
+    let source = load("tests/saves/game/0019.sav");
+    let out = transfer(&source, &load("tests/saves/game/0005.sav")).unwrap();
     assert!(diff(&source, &out).is_empty());
 }
 
 #[test]
 fn a_template_missing_a_zone_is_refused() {
-    let template = load("saves/ALCHEMYXSAVE_8.sav");
+    let template = load("tests/saves/game/ALCHEMYXSAVE_8.sav");
     let last = template.zones().last().unwrap().0.to_owned();
     // drop the last entry of the zone list
     let mut igb = template.into_igb();
@@ -278,7 +269,7 @@ fn a_template_missing_a_zone_is_refused() {
     *count = FieldValue::Int(115);
     let template = Crash3Save::from_igb(igb).unwrap();
 
-    let err = transfer(&load("saves/0019.sav"), &template).unwrap_err();
+    let err = transfer(&load("tests/saves/game/0019.sav"), &template).unwrap_err();
     assert_eq!(err, TransferError::MissingZone(last));
 }
 
@@ -292,7 +283,7 @@ fn with_version(save: Crash3Save, version: i32) -> Crash3Save {
 
 #[test]
 fn another_save_version_is_refused() {
-    let (source, template) = (load("saves/0019.sav"), template(Platform::Pc));
+    let (source, template) = (load("tests/saves/game/0019.sav"), template(Platform::Pc));
     assert_eq!(SAVE_VERSION, 75);
 
     let err = transfer(&with_version(source.clone(), 76), &template).unwrap_err();
@@ -315,7 +306,7 @@ fn another_save_version_is_refused() {
 
 #[test]
 fn a_non_empty_quest_list_is_refused() {
-    let mut igb = load("saves/0019.sav").into_igb();
+    let mut igb = load("tests/saves/game/0019.sav").into_igb();
     let list = igb.objects_of("CQuestTrackSaveDataList").next().unwrap().id;
     *igb.object_mut(list).unwrap().field_mut(0).unwrap() = FieldValue::Int(1);
     let source = Crash3Save::from_igb(igb).unwrap();

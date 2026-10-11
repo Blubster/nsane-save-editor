@@ -1,21 +1,17 @@
 //! The document layer: undo and redo, dirty tracking, platform and size,
 //! preview and review.
 
-use std::path::{Path, PathBuf};
-
 use nsane::crash3::{Ability, Edit, EditError, Kind, LevelId, Relic};
 use nsane::diff::{Change, ChangeGroup, Subject};
 use nsane::igb::SummaryValue;
 use nsane::{Document, Platform, SaveError, UNDO_DEPTH};
 
-fn repo() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
+#[path = "support/corpus.rs"]
+mod corpus;
 
 fn open(rel: &str) -> Document {
-    let path = repo().join(rel);
-    let data = std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-    Document::open(&data, Some(rel.to_owned())).unwrap_or_else(|e| panic!("{rel}: {e}"))
+    Document::open(&corpus::read(rel), Some(rel.to_owned()))
+        .unwrap_or_else(|e| panic!("{rel}: {e}"))
 }
 
 fn id(key: &str) -> LevelId {
@@ -87,7 +83,7 @@ fn mixed_steps() -> Vec<(&'static str, Vec<Edit>)> {
 
 #[test]
 fn undo_and_redo_give_back_the_same_bytes() {
-    let mut doc = open("saves/0019.sav");
+    let mut doc = open("tests/saves/game/0019.sav");
     let mut states = vec![bytes(&doc)];
     for (label, edits) in mixed_steps() {
         let before = bytes(&doc);
@@ -131,7 +127,7 @@ fn a_failing_batch_changes_nothing() {
         },
     ];
 
-    let mut doc = open("saves/0019.sav");
+    let mut doc = open("tests/saves/game/0019.sav");
     let before = bytes(&doc);
     let err = doc.apply("bad", failing.clone()).unwrap_err();
     assert_eq!(err.code(), "not_applicable");
@@ -156,14 +152,14 @@ fn a_failing_batch_changes_nothing() {
 
 #[test]
 fn dirty_flag_follows_the_saved_state() {
-    let mut doc = open("saves/0019.sav");
+    let mut doc = open("tests/saves/game/0019.sav");
     assert!(!doc.is_dirty());
     doc.apply("lives", vec![Edit::SetLives { count: 42 }])
         .unwrap();
     assert!(doc.is_dirty());
     doc.mark_saved(None);
     assert!(!doc.is_dirty());
-    assert_eq!(doc.file_name(), Some("saves/0019.sav"));
+    assert_eq!(doc.file_name(), Some("tests/saves/game/0019.sav"));
     doc.undo();
     assert!(doc.is_dirty());
     doc.redo();
@@ -189,7 +185,7 @@ fn dirty_flag_follows_the_saved_state() {
 
 #[test]
 fn undo_keeps_the_last_steps() {
-    let mut doc = open("saves/0019.sav");
+    let mut doc = open("tests/saves/game/0019.sav");
     for i in 0..UNDO_DEPTH + 5 {
         let count = i as u8;
         doc.apply(format!("lives {count}"), vec![Edit::SetLives { count }])
@@ -209,7 +205,7 @@ fn undo_keeps_the_last_steps() {
 
 #[test]
 fn platform_and_size() {
-    let doc = open("saves/0019.sav");
+    let doc = open("tests/saves/game/0019.sav");
     assert_eq!(doc.platform(), Platform::Switch);
     let size = doc.size_report();
     assert_eq!(size.capacity, Some(153_600));
@@ -217,7 +213,7 @@ fn platform_and_size() {
     assert!(size.fits());
     assert_eq!(bytes(&doc).len(), 153_600);
 
-    let mut doc = open("saves/ALCHEMYXSAVE_8.sav");
+    let mut doc = open("tests/saves/game/ALCHEMYXSAVE_8.sav");
     assert_eq!(doc.platform(), Platform::Pc);
     assert_eq!(doc.size_report().capacity, None);
     assert_eq!(doc.size_report().used, bytes(&doc).len());
@@ -244,7 +240,7 @@ fn platform_and_size() {
 fn a_switch_save_that_outgrows_its_file_is_kept_but_not_written() {
     // The longest flag key that still fits `initial_game.sav` is 91,000
     // characters (test vectors `edge/switch_exact_fit`, `edge/switch_overflow`).
-    let mut doc = open("saves/initial_game.sav");
+    let mut doc = open("tests/saves/game/initial_game.sav");
     let key = |n| Edit::RawFlagSet { key: "x".repeat(n) };
     doc.apply("fits", vec![key(91_000)]).unwrap();
     assert_eq!(doc.size_report().used, 153_600);
@@ -270,7 +266,7 @@ fn a_switch_save_that_outgrows_its_file_is_kept_but_not_written() {
 
 /// The scripted session of the save review dialog.
 fn review_session() -> Document {
-    let mut doc = open("saves/0019.sav");
+    let mut doc = open("tests/saves/game/0019.sav");
     assert_eq!(doc.current().lives(), 41);
     let deep = id("deeptrouble");
     assert!(!doc.current().entered(deep));
@@ -369,7 +365,7 @@ fn save_review() {
 
 #[test]
 fn a_save_without_changes_has_an_empty_review() {
-    let doc = open("saves/0019.sav");
+    let doc = open("tests/saves/game/0019.sav");
     assert!(doc.changes().is_empty());
     assert_eq!(doc.review().rows, []);
     assert_eq!(doc.review().recomputed, []);
@@ -381,7 +377,7 @@ fn preview_matches_apply_and_changes_nothing() {
         .into_iter()
         .flat_map(|(_, e)| e)
         .collect::<Vec<_>>();
-    let mut doc = open("saves/0019.sav");
+    let mut doc = open("tests/saves/game/0019.sav");
     let before = bytes(&doc);
     let preview = doc.preview(&edits).unwrap();
     assert_eq!(bytes(&doc), before);
@@ -429,7 +425,7 @@ fn preview_shows_what_the_edits_add_to_the_current_state() {
 
 #[test]
 fn redo_history_and_generation() {
-    let mut doc = open("saves/0019.sav");
+    let mut doc = open("tests/saves/game/0019.sav");
     let opened = doc.generation();
     for count in 1..=3 {
         doc.apply(format!("lives {count}"), vec![Edit::SetLives { count }])

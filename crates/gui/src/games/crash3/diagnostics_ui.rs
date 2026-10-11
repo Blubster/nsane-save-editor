@@ -189,7 +189,7 @@ mod tests {
 
     #[test]
     fn counts_read_as_text() {
-        let bytes = std::fs::read(repo_file("test_saves/t4_crystals.sav")).unwrap();
+        let bytes = std::fs::read(repo_file("tests/saves/edited/t4_crystals.sav")).unwrap();
         let doc = Document::open(&bytes, None).unwrap();
         let text = counts_text(doc.diagnostics());
         assert!(text.starts_with("1 warning"), "{text}");

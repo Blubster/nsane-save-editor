@@ -1,14 +1,16 @@
-//! Builds the saves of a round of in-game tests into `test_saves/round9/`:
-//! where the game stops adding lives. At 254 lives, picking up a life adds
-//! nothing (`docs/FORMAT.md` §6), so the maximum is lower. Each file is the
-//! 19% playthrough save with another life count, around the values a cap is
-//! likely to be: two digits, a signed byte, round numbers, one below 254.
+//! Builds the saves of a round of in-game tests: where the game stops adding
+//! lives. At 254 lives, picking up a life adds nothing (`docs/FORMAT.md` §6),
+//! so the maximum is lower. Each file is the 19% playthrough save with
+//! another life count, around the values a cap is likely to be: two digits,
+//! a signed byte, round numbers, one below 254.
 //!
-//!     cargo run -p nsane --example make_live_round9
+//!     cargo run -p nsane --example make_live_round9 [OUTPUT_FOLDER]
 //!
-//! Every file is read back and checked before it is written. A file that
-//! already exists is never replaced: once loaded in game it is test
-//! evidence, so a run that would write other bytes stops instead.
+//! The files go to `OUTPUT_FOLDER`, `target/live-round9` by default. Every
+//! file is read back and checked before it is written. A file that already
+//! exists is never replaced: once loaded in game it is test evidence, so a
+//! run that would write other bytes stops instead. The tests rebuild these
+//! files from their recipes (`tests/saves/README.md`).
 
 use std::path::{Path, PathBuf};
 
@@ -60,14 +62,16 @@ fn write(dir: &Path, name: &str, bytes: &[u8]) {
 }
 
 fn main() {
-    let path = repo().join("saves/0019.sav");
+    let path = repo().join("tests/saves/game/0019.sav");
     let source = Crash3Save::parse(&std::fs::read(&path).unwrap()).unwrap();
     // Build and check everything before writing anything.
     let built: Vec<_> = LIVES
         .iter()
         .map(|&lives| (format!("r9_lives_{lives}.sav"), build(&source, lives)))
         .collect();
-    let dir = repo().join("test_saves/round9");
+    let dir = std::env::args_os()
+        .nth(1)
+        .map_or_else(|| repo().join("target/live-round9"), PathBuf::from);
     std::fs::create_dir_all(&dir).unwrap();
     for (name, bytes) in &built {
         write(&dir, name, bytes);

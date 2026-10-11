@@ -3,6 +3,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// The test saves, including those rebuilt from their recipe.
+#[path = "../../nsane/tests/support/corpus.rs"]
+pub mod corpus;
+
 /// A fresh, empty folder for one test.
 pub fn temp_dir(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!(

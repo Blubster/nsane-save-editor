@@ -1,6 +1,7 @@
 //! Game-level golden scenarios: edits applied to a save, the summary
 //! recomputed, the file built. The bytes, or the error code, must match
-//! `tests/golden/manifest.json`.
+//! `tests/golden/manifest.json`. A scenario starts from a file under
+//! `tests/saves/`, or from `live/<name>`, the output of another recipe.
 
 use std::path::{Path, PathBuf};
 
@@ -8,6 +9,9 @@ use nsane::Error;
 use nsane::crash3::{Crash3Save, Edit, EditError};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
+
+#[path = "support/corpus.rs"]
+mod corpus;
 
 fn repo() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -52,9 +56,7 @@ fn error_code(e: Error) -> Result<String, String> {
 /// The output bytes, or the error code of the first failing step.
 fn run(scenario: &Map<String, Value>) -> Result<Result<Vec<u8>, String>, String> {
     let input = scenario["input"].as_str().ok_or("input is not a string")?;
-    let path = repo().join(input);
-    let data =
-        std::fs::read(&path).map_err(|e| format!("missing input {}: {e}", path.display()))?;
+    let data = corpus::input(input).map_err(|e| format!("missing input {e}"))?;
     let mut save = Crash3Save::parse(&data).map_err(|e| format!("{input}: {e}"))?;
     for op in ops(scenario) {
         let applied = Edit::from_json(op).and_then(|edit| save.apply(&edit));
@@ -160,16 +162,46 @@ fn game_scenarios_match_the_manifest() {
     eprintln!("{ran} game scenarios passed");
 }
 
-/// The scenarios whose output equals a file tested in game are among those
-/// that pass above; check they are all there.
+/// The recipes of the files tested in game are among the scenarios that pass
+/// above, one per file. A recipe names its file in `expect_file` when the file
+/// is kept under `tests/saves/`: only when the recipe doesn't rebuild it
+/// exactly. The others are rebuilt from the recipe, which has the file's
+/// bytes.
 #[test]
 fn scenarios_cover_the_files_tested_in_game() {
-    let with_file = scenarios()
-        .iter()
+    let files: Vec<String> = corpus::files_in("tests/saves")
+        .into_iter()
+        .map(|s| s.source)
+        .collect();
+    let live: Vec<_> = scenarios()
+        .into_iter()
         .filter(|s| s["name"].as_str().unwrap().starts_with("live/"))
-        .filter(|s| s.contains_key("expect_file"))
-        .count();
-    assert_eq!(with_file, 22);
+        .collect();
+    assert_eq!(live.len(), 32);
+    let mut kept = 0;
+    for scenario in &live {
+        let recipe = scenario["name"]
+            .as_str()
+            .unwrap()
+            .strip_prefix("live/")
+            .unwrap();
+        let file = files
+            .iter()
+            .find(|f| Path::new(f).file_name().unwrap() == format!("{recipe}.sav").as_str());
+        let expect_file = scenario.get("expect_file").and_then(Value::as_str);
+        assert_eq!(expect_file, file.map(String::as_str), "{recipe}");
+        if file.is_some() {
+            assert!(scenario.contains_key("stale_summary_keys"), "{recipe}");
+            kept += 1;
+        }
+    }
+    assert_eq!(kept, 8);
+    // Every expected file of any scenario exists.
+    for scenario in scenarios() {
+        if let Some(file) = scenario.get("expect_file").and_then(Value::as_str) {
+            assert!(files.iter().any(|f| f == file), "{file}");
+        }
+    }
 }
 
 /// Every op of a valid scenario reads back to the same JSON once serialized.
@@ -202,8 +234,8 @@ fn error_scenarios_fail_on_their_last_op() {
             continue;
         };
         let name = scenario["name"].as_str().unwrap();
-        let input = repo().join(scenario["input"].as_str().unwrap());
-        let mut save = Crash3Save::parse(&std::fs::read(input).unwrap()).unwrap();
+        let input = corpus::input(scenario["input"].as_str().unwrap()).unwrap();
+        let mut save = Crash3Save::parse(&input).unwrap();
         let (last, before) = ops(&scenario).split_last().unwrap();
         for op in before {
             save.apply(&Edit::from_json(op).unwrap()).unwrap();

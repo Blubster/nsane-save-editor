@@ -791,8 +791,8 @@ mod tests {
     /// `0019.sav` to PC with the user's own PC save, and back to Switch.
     #[test]
     fn switch_to_pc_and_back() {
-        let source = load("saves/0019.sav");
-        let pc = convert(&source, &load("saves/ALCHEMYXSAVE_8.sav")).unwrap();
+        let source = load("tests/saves/game/0019.sav");
+        let pc = convert(&source, &load("tests/saves/game/ALCHEMYXSAVE_8.sav")).unwrap();
         assert!(pc.changes.is_empty(), "{:?}", pc.changes);
         assert_eq!(pc.platform, Platform::Pc);
         let back = Crash3Save::parse(&pc.bytes).unwrap();
@@ -806,7 +806,7 @@ mod tests {
 
         for template in [
             bundled_template_save(Platform::Switch).unwrap(),
-            load("saves/0001.sav"),
+            load("tests/saves/game/0001.sav"),
         ] {
             let switch = convert(&back, &template).unwrap();
             assert_eq!(switch.platform, Platform::Switch);
@@ -819,7 +819,7 @@ mod tests {
 
     #[test]
     fn templates_of_the_wrong_platform_or_not_saves_are_refused() {
-        let bytes = std::fs::read(repo_file("saves/0018.sav")).unwrap();
+        let bytes = std::fs::read(repo_file("tests/saves/game/0018.sav")).unwrap();
         let t = Template::read("0018.sav".into(), &bytes, Platform::Pc);
         let e = t.save.unwrap_err();
         assert!(e.contains("0018.sav is a Switch save"), "{e}");
@@ -851,12 +851,12 @@ mod tests {
             doc.current().clone()
         };
         let switch = bundled_template_save(Platform::Switch).unwrap();
-        match convert(&oversized("saves/ALCHEMYXSAVE_8.sav"), &switch) {
+        match convert(&oversized("tests/saves/game/ALCHEMYXSAVE_8.sav"), &switch) {
             Err(Failure::Convert(e)) => assert!(e.contains("a Switch save file holds"), "{e}"),
             other => panic!("{other:?}"),
         }
         let pc = bundled_template_save(Platform::Pc).unwrap();
-        let converted = convert(&oversized("saves/0018.sav"), &pc).unwrap();
+        let converted = convert(&oversized("tests/saves/game/0018.sav"), &pc).unwrap();
         assert!(converted.changes.is_empty());
         assert!(converted.bytes.len() > 153_600);
     }
@@ -872,8 +872,8 @@ mod tests {
                 .unwrap();
             Crash3Save::from_igb(igb).unwrap()
         };
-        let source = load("saves/0019.sav");
-        let template = load("saves/ALCHEMYXSAVE_8.sav");
+        let source = load("tests/saves/game/0019.sav");
+        let template = load("tests/saves/game/ALCHEMYXSAVE_8.sav");
         match convert(&source, &with_version(template.clone(), 74)) {
             Err(Failure::Template(e)) => assert!(e.contains("version 74"), "{e}"),
             other => panic!("{other:?}"),

@@ -26,8 +26,10 @@ pub const VERIFIED_IN_GAME: bool = true;
 /// The only `save_version` the editor knows.
 pub const SAVE_VERSION: i32 = 75;
 
-const SWITCH_NEW_GAME: &[u8] = include_bytes!("../../../saves/initial_game.sav");
-const PC_NEW_GAME: &[u8] = include_bytes!("../../../saves/ALCHEMYXSAVE_8.sav");
+// The new-game saves the game wrote, one per platform. They are test saves
+// too: the tests check them like every other save the game wrote.
+const SWITCH_NEW_GAME: &[u8] = include_bytes!("../../../tests/saves/game/initial_game.sav");
+const PC_NEW_GAME: &[u8] = include_bytes!("../../../tests/saves/game/ALCHEMYXSAVE_8.sav");
 
 /// A new-game save of `platform`: the template to use when the user has no
 /// save of their own from that platform.

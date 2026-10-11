@@ -439,7 +439,10 @@ mod tests {
     /// warning or error; "Complete everything" reaches 108%.
     #[test]
     fn the_defaults_leave_no_warning_or_error() {
-        for rel in ["saves/initial_game.sav", "saves/0019.sav"] {
+        for rel in [
+            "tests/saves/game/initial_game.sav",
+            "tests/saves/game/0019.sav",
+        ] {
             let fresh = open(rel);
             for preset in Preset::menu(fresh.current()) {
                 let mut doc = fresh.clone();
@@ -460,7 +463,7 @@ mod tests {
 
     #[test]
     fn the_defaults_are_the_core_defaults() {
-        let doc = open("saves/0019.sav");
+        let doc = open("tests/saves/game/0019.sav");
         let [all, story, relics, powers, scenes] = Preset::menu(doc.current());
         assert_eq!(all, Preset::CompleteAll(CompleteAll::default()));
         // 0019: Tiny Tiger and Dingodile are defeated, N. Tropy is next.
@@ -484,7 +487,7 @@ mod tests {
 
     #[test]
     fn labels_name_the_preset_and_its_options() {
-        let doc = open("saves/0019.sav");
+        let doc = open("tests/saves/game/0019.sav");
         let labels: Vec<String> = Preset::menu(doc.current())
             .iter()
             .map(Preset::label)
@@ -526,9 +529,9 @@ mod tests {
             TimePolicy::Clear,
         ];
         for rel in [
-            "saves/0019.sav",
-            "saves/initial_game.sav",
-            "saves/ALCHEMYXSAVE_8.sav",
+            "tests/saves/game/0019.sav",
+            "tests/saves/game/initial_game.sav",
+            "tests/saves/game/ALCHEMYXSAVE_8.sav",
         ] {
             let fresh = open(rel);
             let mut cases = Vec::new();

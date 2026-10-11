@@ -697,7 +697,7 @@ mod tests {
 
     #[test]
     fn the_unlock_dialog_emits_one_edit_with_its_options() {
-        let save = open("saves/0019.sav");
+        let save = open("tests/saves/game/0019.sav");
         let edits = Bulk::unlock(4).edits(save.current());
         assert_eq!(
             edits,
@@ -715,7 +715,7 @@ mod tests {
 
     #[test]
     fn the_secret_room_dialog_uses_the_preset_defaults() {
-        let doc = open("saves/0019.sav");
+        let doc = open("tests/saves/game/0019.sav");
         let bulk = Bulk::relics(entry(29));
         let Bulk::Relics { count, options, .. } = bulk else {
             unreachable!()
@@ -741,9 +741,9 @@ mod tests {
     #[test]
     fn the_preview_matches_the_applied_changes() {
         for rel in [
-            "saves/0019.sav",
-            "saves/initial_game.sav",
-            "saves/ALCHEMYXSAVE_8.sav",
+            "tests/saves/game/0019.sav",
+            "tests/saves/game/initial_game.sav",
+            "tests/saves/game/ALCHEMYXSAVE_8.sav",
         ] {
             let fresh = open(rel);
             let save = fresh.current();
@@ -787,7 +787,7 @@ mod tests {
 
     #[test]
     fn opening_up_to_29_gives_20_relics() {
-        let mut doc = open("saves/0019.sav");
+        let mut doc = open("tests/saves/game/0019.sav");
         let edits = Bulk::relics(entry(29)).edits(doc.current());
         doc.apply("reach", edits).unwrap();
         assert_eq!(doc.current().totals().relics(), 20);

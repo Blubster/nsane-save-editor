@@ -2,11 +2,11 @@
 
 This is the format reference for the editor. The code and the other documents of this repository cite it. Every rule below names its evidence, using these sources:
 
-- **Saves the game wrote.** `saves/0001.sav`–`0019.sav` and `saves/initial_game.sav`: one Switch playthrough, one save after each step (see the [save log](#11-save-log)). `saves/ALCHEMYXSAVE_8.sav`: a fresh PC game. The `*_after*.sav` and `r7a*.sav` files in `test_saves/`: what the game wrote after a live test.
-- **Live tests.** Saves made by the editor, loaded on a Switch or a PC, played, and often saved again by the game. They are named T1–T8, R7, PC1/PC2, R8 and R9 after the test rounds. The files are in `test_saves/`, and the results are in the [live test log](#10-live-test-log).
+- **Saves the game wrote.** In `tests/saves/game/`: `0001.sav`–`0019.sav` and `initial_game.sav`, one Switch playthrough, one save after each step (see the [save log](#11-save-log)), and `ALCHEMYXSAVE_8.sav`, a fresh PC game. In `tests/saves/after_edit/`: what the game wrote after a live test.
+- **Live tests.** Saves made by the editor, loaded on a Switch or a PC, played, and often saved again by the game. They are named T1–T8, R7, PC1/PC2, R8 and R9 after the test rounds, and the results are in the [live test log](#10-live-test-log). The files are in `tests/saves/edited/`, or rebuilt by the tests when a recipe of edits gives their exact bytes: such a file is cited here as `live/<name>`, its recipe in `tests/golden/scenarios.json` ([tests/saves/README.md](../tests/saves/README.md)).
 - **Public sources.** Community guides and wikis, cited by URL where they are used.
 
-"All observed saves" means the 54 `.sav` files in `saves/` and `test_saves/`, outside `test_saves/round8/` and `test_saves/round9/`. Those folders hold the later test rounds R8 and R9: the saves the editor made for them and those the game wrote afterwards (`*_after.sav`), described in the [live test log](#10-live-test-log).
+"All observed saves" means the 75 test saves: the 51 files under `tests/saves/` and the 24 saves the tests rebuild from their recipe.
 
 ## Contents
 
@@ -26,20 +26,20 @@ This is the format reference for the editor. The code and the other documents of
 
 | | Switch | PC |
 |---|---|---|
-| File name | `MACK_<n>.sav` on the console, `<n>` being the save slot (below). The save manager used here exports it under that name; the copies in `saves/` were renamed `0001.sav`… for storage. | `ALCHEMYXSAVE_<n>.sav`, `<n>` being the save slot (below) |
-| Size | Always **153,600 bytes**: the content, then zero padding (every Switch save in `saves/`) | **Exactly the content**, with no padding: 64,781 bytes for a fresh game (`saves/ALCHEMYXSAVE_8.sav`) |
+| File name | `MACK_<n>.sav` on the console, `<n>` being the save slot (below). The save manager used here exports it under that name; the copies in `tests/saves/game/` were renamed `0001.sav`… for storage. | `ALCHEMYXSAVE_<n>.sav`, `<n>` being the save slot (below) |
+| Size | Always **153,600 bytes**: the content, then zero padding (every Switch save in `tests/saves/`) | **Exactly the content**, with no padding: 64,781 bytes for a fresh game (`tests/saves/game/ALCHEMYXSAVE_8.sav`) |
 | Container | Alchemy IGB, version `0xB400000C` | Same |
 | Meta fields (type registry) | 821 | 860: the PC registry has extra rendering and input types |
-| Game data | | Identical: same classes, summary keys, strings, handle names, zones and variables. A fresh PC save matches `saves/initial_game.sav` field for field. |
+| Game data | | Identical: same classes, summary keys, strings, handle names, zones and variables. A fresh PC save matches `tests/saves/game/initial_game.sav` field for field. |
 | Checksum | None | None |
 | "No reference" value | `0xFFFFFFFE` in the empty references of the save data objects (`CDynamicDifficultySaveData`, `CQuestTrackSaveDataList`, `CGameVariableValueSavedStringList`); `0xFFFFFFFD` in `igObjectDirectoryIGBInfo` | The other way round |
 | Bool upper bytes | Between the two fresh saves, they differ in 84 of the 116 zone sessions and in 21 of the 30 bool variables | |
 
-- **Switch.** An edited file is written back padded to 153,600 bytes, and an edit whose content no longer fits is refused. A 108% save with every scene flag set uses 68,157 bytes before padding (`test_saves/t8_full108_scenes.sav`).
+- **Switch.** An edited file is written back padded to 153,600 bytes, and an edit whose content no longer fits is refused. A 108% save with every scene flag set uses 68,157 bytes before padding (`live/t8_full108_scenes`).
 - **PC.** An edited file is written at its new length. A full 108% edit grows the fresh save from 64,781 to 68,318 bytes. PC1 (same size) and PC2 (grown) both loaded in game.
 - **Converting between platforms.** The game data maps one to one by meaning (zone path, variable name, flag key, summary key), not by object id. The editor copies it into a save of the target platform (a "template") and keeps the template's own container: type registry, ids, "no reference" values, bool upper bytes and padding. Both fresh saves convert to each other byte for byte. Converted saves load in game in both directions with the same progress, and the game's next save keeps all of it (R8: Switch → PC and PC → Switch).
 - **All three games are in one file.** Every save holds 116 zone sessions (`crash1/…`, `crash2/…`, `crash3/…`, `whiterooms/…`) and the variables of the three games. Only Crash 3 is decoded here.
-- **Save slots.** Each game has 4 save slots, and each slot is one file numbered `<n>` = 0 to 11, the same on both platforms: 0–3 for Crash Bandicoot, 4–7 for Crash 2 and 8–11 for Crash 3 (`MACK_8.sav`… `MACK_11.sav`, `ALCHEMYXSAVE_8.sav`… `ALCHEMYXSAVE_11.sav`). Observed on the PC and on the Switch by looking at the files each slot writes. `saves/ALCHEMYXSAVE_8.sav` is the first Crash 3 slot. What the game does with a Crash 3 save placed in another game's slot has not been tested. On the PC used here, the save files are in `%APPDATA%\Game`.
+- **Save slots.** Each game has 4 save slots, and each slot is one file numbered `<n>` = 0 to 11, the same on both platforms: 0–3 for Crash Bandicoot, 4–7 for Crash 2 and 8–11 for Crash 3 (`MACK_8.sav`… `MACK_11.sav`, `ALCHEMYXSAVE_8.sav`… `ALCHEMYXSAVE_11.sav`). Observed on the PC and on the Switch by looking at the files each slot writes. `tests/saves/game/ALCHEMYXSAVE_8.sav` is the first Crash 3 slot. What the game does with a Crash 3 save placed in another game's slot has not been tested. On the PC used here, the save files are in `%APPDATA%\Game`.
 
 ## 2. Container: Alchemy IGB
 
@@ -47,7 +47,7 @@ All integers are little-endian `u32` unless noted. Every section carries its own
 
 | Section | Layout |
 |---|---|
-| Header (offset 0) | 12 × `u32`: `(entries size, count)`, `(meta objects size, count)`, `(objects size, count)`, `(memory size, count)`, `(meta fields size, count)`, magic `0xFADA`, version. The entries and memory pairs change when a hash table grows: 31 entries and memory `0x63c` in `saves/0019.sav`, 32 entries and `0x77c` in `test_saves/t5_secret_room.sav`. **Recompute them on write.** |
+| Header (offset 0) | 12 × `u32`: `(entries size, count)`, `(meta objects size, count)`, `(objects size, count)`, `(memory size, count)`, `(meta fields size, count)`, magic `0xFADA`, version. The entries and memory pairs change when a hash table grows: 31 entries and memory `0x63c` in `tests/saves/game/0019.sav`, 32 entries and `0x77c` in `tests/saves/edited/t5_secret_room.sav`. **Recompute them on write.** |
 | Summary (offset `0x30`) | `u32 3`, then 3 size-prefixed arrays: entries `(type, key offset, value offset)` (type 0 = int, 1 = float, 2 = string), the key strings, the values. See [§6](#6-summary-table). |
 | String table | `u32 size` (including itself), `u32 count`, then per string `u32 length` (including the NUL) and the latin-1 bytes. Length 0 is the null string, always at index 0. The other strings are **kept sorted by bytes**. String fields, string memory blocks and name elements store indices into this table, so inserting a string means renumbering every reference after it. |
 | Meta fields | count × `(u32 name length, u32, u32)`, then the type names (`igIntMetaField`…). Kept as is. |
@@ -57,7 +57,7 @@ All integers are little-endian `u32` unless noted. Every section carries its own
 | Pool index list | `u32 size`, then ints. Kept as is. |
 | Directory | `entries count` records `(u32 class, u32 record size, values)`. An object entry is `(name, class index, pool)`; a memory entry is `(name, element count, element type, active, alignment, pool)`. Memory blocks with the same count and type share one entry, so resizing a block can add an entry, and an entry no block uses any more is dropped. |
 | Object index | `u32 size, u32 count`, count × `u16` directory index, then padding. The position in this list is the **id** that references use; objects and memory blocks share the id space. Ids differ from one save to the next, so they are never hard-coded. |
-| `u32` | Unknown, kept as is (285 in `saves/initial_game.sav`, 14 in `saves/ALCHEMYXSAVE_8.sav`). |
+| `u32` | Unknown, kept as is (285 in `tests/saves/game/initial_game.sav`, 14 in `tests/saves/game/ALCHEMYXSAVE_8.sav`). |
 | Objects | For each object id in order: `u32 class index, u32 size`, then the fields. String, object reference, memory reference, int, enum, uint and float are 4 bytes; a handle is 8 bytes `(name hash, namespace hash)`; a vector is 8 bytes; a bool is 4 bytes, where only the low byte is the value and the upper bytes hold arbitrary data that is **written back unchanged**. Every observed save has 288 objects. |
 | Memory | For each memory id in order, the raw elements: object reference, int and string are 4 bytes, bool 1 byte, name 8 bytes `(string index, hash)`. Unused slots of the int hash table hold the fill byte `0xFA`. |
 | Switch only | Zero padding up to 153,600 bytes. |
@@ -68,13 +68,13 @@ The two hash tables (`igStringBoolHashTable`, `igStringIntHashTable`) have the f
 
 - **Slot.** A key's slot is FNV-1a-32 of the key text (**case sensitive**, unlike handles) modulo the capacity, with linear probing.
 - **Growth.** Capacity starts at 64. Before an insert, if `count + 1 > capacity × 0.5`, the capacity doubles and every key is inserted again. After a growth, empty key slots are 0, empty bool values 0 and empty int values `0xFAFAFAFA`.
-- **When it happens.** The bool table of a mid-game save holds about 16 keys (`saves/0019.sav`), so adding about 16 relic or cutscene flags makes it grow. T5 added 18 keys and grew the table from 64 to 128 slots; the game loaded it.
+- **When it happens.** The bool table of a mid-game save holds about 16 keys (`tests/saves/game/0019.sav`), so adding about 16 relic or cutscene flags makes it grow. T5 added 18 keys and grew the table from 64 to 128 slots; the game loaded it.
 
 ## 3. Levels
 
 ### Level table
 
-"Index" is the progression index used by the summary ([§6](#6-summary-table)): story order, Toad Village = 1 to Dr. Neo Cortex = 30. The name column is the spelling the game stores in `<Name>_RelicCounted` flag keys (seen in the game's own saves, for example `Toad Village_RelicCounted` in `saves/0010.sav`).
+"Index" is the progression index used by the summary ([§6](#6-summary-table)): story order, Toad Village = 1 to Dr. Neo Cortex = 30. The name column is the spelling the game stores in `<Name>_RelicCounted` flag keys (seen in the game's own saves, for example `Toad Village_RelicCounted` in `tests/saves/game/0010.sav`).
 
 | # | Name | Key | Room | Kind | Zone path | Index | Crystal | Second gem | Colored gem |
 |---|---|---|---|---|---|---|---|---|---|
@@ -119,7 +119,7 @@ The two hash tables (`igStringBoolHashTable`, `igStringIntHashTable`) have the f
 
 - Every level and secret level (31 in all) has a clear gem and a relic. Only levels 1–25 have a crystal.
 - In the Kind column, the numbered secret-room levels 26, 28 and 30 are `level`, while the unnumbered Hot Coco, Eggipus Rex and Future Tense are `secret`. "Room 6" is the secret warp room.
-- The progression indices are those the game writes in `previous_level_progression_index` and `farthest_progression_index` (for example 25 after beating N. Gin in `test_saves/t4d_after.sav`, 30 after Cortex in `test_saves/t7_after_beating_cortex.sav`).
+- The progression indices are those the game writes in `previous_level_progression_index` and `farthest_progression_index` (for example 25 after beating N. Gin in `tests/saves/after_edit/t4d_after.sav`, 30 after Cortex in `tests/saves/after_edit/t7_after_beating_cortex.sav`).
 - The second gem and colored gem columns follow the guides cited below, and were checked in game where the notes say so.
 
 ### Colored gems and their paths
@@ -132,13 +132,13 @@ The two hash tables (`igStringBoolHashTable`, `igStringIntHashTable`) have the f
 | Blue | Tomb Wader, death route [PowerPyx gems] | `GEM_BLUE` | `Gem_Blue` | **Sphynxinator** (T2), Bug Lite |
 | Green | Flaming Passion, death route [PowerPyx gems] | `GEM_GREEN` | `Gem_Green` | Gone Tomorrow [PowerPyx gems], Bug Lite |
 
-- **A colored gem is its zone bit plus its `Gem_<Color>` variable.** Setting both is enough for its platforms to work (step2, T2). The game writes exactly these two when the gem is picked up for real: T5's yellow gem, in `test_saves/t5_after.sav`.
+- **A colored gem is its zone bit plus its `Gem_<Color>` variable.** Setting both is enough for its platforms to work (step2, T2). The game writes exactly these two when the gem is picked up for real: T5's yellow gem, in `tests/saves/after_edit/t5_after.sav`.
 - Bug Lite's multicolored path needs all five gems [PowerPyx gems]. It was visible in T6.
 - A `Gem_Orange` variable exists in every save. It is 0 in all observed saves, and the editor never writes it.
 
 ### Second gems
 
-Ten levels have a second clear gem [PowerPyx gems]. The gem for breaking every box is always `GEM_CLEAR`; the other one is `GEM_SECOND`. In `saves/0007.sav`–`0019.sav` the game wrote Bone Yard with `GEM_CLEAR | CRYSTAL` (`0x0202`) after every box was broken, while its red-gem path was still out of reach.
+Ten levels have a second clear gem [PowerPyx gems]. The gem for breaking every box is always `GEM_CLEAR`; the other one is `GEM_SECOND`. In `tests/saves/game/0007.sav`–`0019.sav` the game wrote Bone Yard with `GEM_CLEAR | CRYSTAL` (`0x0202`) after every box was broken, while its red-gem path was still out of reach.
 
 | Level | How the second gem is earned |
 |---|---|
@@ -159,10 +159,10 @@ The race gems of Area 51? and Rings of Power, and Future Tense's death route gem
 
 | Boss | Opens | Ability (variable) | Evidence | Story scenes (cutscene step) |
 |---|---|---|---|---|
-| Tiny Tiger | warp room 2 | Super Charged Body Slam (`Upgrade_SuperChargedBodySlam`) | set by the game in `saves/0009.sav` | `C3_Tiny_Intro`, `C3_Tiny_PreBossFight`, `C3_Tiny_PostBossFight` |
-| Dingodile | warp room 3 | Double Jump (`Upgrade_DoubleJump`) | set by the game in `saves/0017.sav` | `C3_Hub2_Intro`, `C3_Dingodile_Intro`, `C3_Dingodile_PreBossFight` |
+| Tiny Tiger | warp room 2 | Super Charged Body Slam (`Upgrade_SuperChargedBodySlam`) | set by the game in `tests/saves/game/0009.sav` | `C3_Tiny_Intro`, `C3_Tiny_PreBossFight`, `C3_Tiny_PostBossFight` |
+| Dingodile | warp room 3 | Double Jump (`Upgrade_DoubleJump`) | set by the game in `tests/saves/game/0017.sav` | `C3_Hub2_Intro`, `C3_Dingodile_Intro`, `C3_Dingodile_PreBossFight` |
 | Dr. N. Tropy | warp room 4 | Death Tornado Spin (`Upgrade_DeathTornadoSpin`) | [Crashmania powers]; worked in step2 and T3 | `C3_NTropy_Hub3_Intro`, `C3_NTropy_PreFight`, `C3_NTropy_Taunt`, `C3_Cortex_Post_NTropy_Fight` |
-| N. Gin | warp room 5 | Fruit Bazooka (`Upgrade_FruitBazooka`) | set by the game in `test_saves/t4d_after.sav` | `C3_NGin_Intro`, `C3_PreNGinFight`, `C3_PostNGinFight` |
+| N. Gin | warp room 5 | Fruit Bazooka (`Upgrade_FruitBazooka`) | set by the game in `tests/saves/after_edit/t4d_after.sav` | `C3_NGin_Intro`, `C3_PreNGinFight`, `C3_PostNGinFight` |
 | Dr. Neo Cortex | ending | Speed Shoes (`Upgrade_SpeedShoes`) | [Crashmania powers] ("Crash Dash"); worked in T3 | `C3_Cortex_Taunt_2`, `C3_PreFinalBattle` |
 
 - **Abilities are stored only in these variables**, independently of the boss bits. In T3, Death Tornado Spin still worked with N. Tropy undefeated, Double Jump could be turned off, and the Fruit Bazooka and Speed Shoes worked when turned on early.
@@ -187,7 +187,7 @@ The names are ours. They describe what the saves show.
 | 5–7 | int | `time_1`…`time_3` | Time trial leaderboard in centiseconds (6023 = 1:00.23), best first, 0 = empty slot | 0010, 0011 (1:00.23, then 0:55.44 above it) |
 | 8–10 | string | `initials_1`…`initials_3` | `""` for a player's time, `"---"` for an empty slot | 0010, 0011 |
 | 11 | int | `relic_tier` | 0 none, 1 sapphire, 2 gold, 3 platinum | 0010 (1), 0011 (2), T1 (3) |
-| 12 | bool | `crystal` | Equal to the `CRYSTAL` bit in every observed record (6,264 sessions in the 54 saves). Finishing a level without its crystal leaves it 0. | All observed saves; 0018 (Double Header finished without the crystal) |
+| 12 | bool | `crystal` | Equal to the `CRYSTAL` bit in every observed record (8,700 sessions in the 75 saves). Finishing a level without its crystal leaves it 0. | All observed saves; 0018 (Double Header finished without the crystal) |
 | 13 | uint | `collectibles` | The bit field below | |
 | 14 | bool | `unknown_14` | Always 0. Preserved. | All observed saves |
 
@@ -369,41 +369,41 @@ The isolated differences (Tomb Time gold in Q, Midnight Run platinum in W, Hot C
 
 ## 10. Live test log
 
-The tests ran on a Switch (step2, T1–T8, R7, lives42, most of R8, R9) and on PC (PC1, PC2, two R8 files). Each test save has its own life count, so the loaded file can be confirmed on the save slot.
+The tests ran on a Switch (step2, T1–T8, R7, lives42, most of R8, R9) and on PC (PC1, PC2, two R8 files). Each test save has its own life count, so the loaded file can be confirmed on the save slot. The edited files are in `tests/saves/edited/`, or rebuilt by the tests from their recipe (`live/<name>`); the game's saves after a test are in `tests/saves/after_edit/`.
 
 | Test | File | Edit | Result in game |
 |---|---|---|---|
-| lives42 | `test_saves/lives42.sav` | 0018 with lives 5 → 42 | 42 lives; dying gave 41 (0019) |
-| step2 | `test_saves/step2.sav` | Deep Trouble: crystal, clear gem, red gem, gold relic, 2 times. Rooms up to 4 unlocked, with abilities. | All shown. The red platform works in Bone Yard. N. Tropy counts as beaten, room 4 is open, the spin works. The slot shows 24%. |
-| T1 | `test_saves/t1_relics.sav` | Sapphire, platinum, a downgrade from gold, a relic without times, times without a relic | All shown as edited. 5 relics: the secret room offers level 26 only. |
-| T2 | `test_saves/t2_gems.sav` | Second gems, a clear gem, all colored gems, including in never-entered levels | All shown. The red, purple, yellow and blue platforms work; Eggipus Rex is reachable. |
-| T3 | `test_saves/t3_removal.sav` | Crystal, gem, relic and times off; red gem off; N. Tropy off; Double Jump off; Fruit Bazooka and Speed Shoes on | All applied. Toad Village lost its time trial. Room 4 locked again. The game kept every change on its next save (`t3_after.sav.sav`). |
-| T4 | `test_saves/t4_crystals.sav` | Crystals in 15–25 with N. Gin alive: 22 crystals | N. Gin's portal glitches over level 18 |
-| T4b | `test_saves/t4b_room4.sav` | Room 4 complete, 17 crystals, index 24 | No N. Gin portal |
-| T4c | `test_saves/t4c_room5.sav` | T4b plus room 5's crystals: 22, index 30 | Room 5 stays locked; glitch |
-| T4d | `test_saves/t4d_rooms1to4.sav` | 5/5/5/5/0 crystals | N. Gin's portal works. Beating him wrote `t4d_after.sav`. |
-| T4e | `test_saves/t4e_rooms1to4_intro.sav` | T4d plus `C3_NGin_Intro` seen | Same as T4d |
-| T4f | `test_saves/t4f_mixed20.sav` | 5/5/5/4/1 crystals | N. Gin's portal works |
-| T4g | `test_saves/t4g_room3_short.sav` | 5/5/2/5/3 crystals | Portal works |
-| T4h | `test_saves/t4h_total22.sav` | 5/5/5/5/2 crystals | Glitch |
-| T5 | `test_saves/t5_secret_room.sav` | 20 gold relics; the flag table grows from 64 to 128 slots | Loads. Secret levels 26–29 open, 30 locked. The yellow gem picked up for real: `t5_after.sav`. |
-| T6 | `test_saves/t6_full108.sav` | Everything (108%) | Everything works. Story scenes play once. Beating Cortex again plays the secret ending (`t6_after.sav`). |
-| T7 | `test_saves/t7_bonus_gem.sav` | Everything, every relic gold, no bonus gem (107%) | The 47th gem spawns in the central warp room, with fireworks; picking it up gives 108%. Beating Cortex again plays the secret ending (`t7_after_beating_cortex.sav`). |
-| T8 | `test_saves/t8_full108_scenes.sav` | T6 with every story scene marked as seen | No scene plays |
-| R7 | `test_saves/r7_base.sav` → `r7a1.sav`–`r7a5.sav` | Under Pressure: quit at once, break a crate, collect fruit, lose a life, finish | `completions` rises only on the finish. `previous_level_*` follow the last level entered. Credits watched from the menu: the save didn't change. |
-| PC1 | `test_saves/pc/pc1_lives42.sav` | Fresh PC save, lives 4 → 42, same size | 42 lives |
-| PC2 | `test_saves/pc/pc2_full108.sav` | Everything; the file grows from 64,781 to 68,318 bytes | 108%, everything open, no story scenes |
-| R8 | `test_saves/round8/l1_switch_to_pc.sav` (PC) | 0019 with 61 lives, converted to PC with the fresh PC save as template | Same progress as 0019: totals, rooms, abilities, scenes. The game's save after finishing Toad Village (`l1_after.sav`) changes only Toad Village's `completions`, 5 → 6. |
-| R8 | `test_saves/round8/l2_pc_to_switch.sav` | Fresh PC save made 108% (platinum, a time just under each threshold, scenes seen), 62 lives, converted to Switch with the fresh Switch save as template | 108%, everything open, no scene plays. The game's save in the hub (`l2_after.sav`) keeps all game data and adds meaningless bytes as `previous_level_name` (§6). |
-| R8 | `test_saves/round8/l3_reset_level.sav` | 0019 with Under Pressure reset to never played, 63 lives | Under Pressure shows as never played: no crystal, gem, relic or time trial; totals 9 crystals, 5 gems; nothing else changed. Nothing special on the next visit. Finishing it (`l3_after.sav`) writes a normal first visit: state 1, `completions` 1, crystal. |
-| R8 | `test_saves/round8/l4_story_up_to_3.sav` | Fresh Switch save with rooms 1–3's crystals, the first three bosses with their abilities and scenes, 64 lives | Rooms 1–4 open, no N. Gin portal (15 crystals), no glitch, no scene plays, the three abilities work. `l4_after.sav`: Sphynxinator finished on a first visit. |
-| R8 | `test_saves/round8/l5_relics_matching.sav` | 0019 with gold on every level and a time just under gold where none earned it, 65 lives | 31 gold relics; every secret level opens. The game's save (`l5_after.sav`) changes nothing. |
-| R8 | `test_saves/round8/l6_relic_panels_pc.sav` (PC) | PC2 with Deep Trouble, Double Header and Sphynxinator at sapphire and Future Frenzy at gold, 66 lives | The time panels show the next relic's time: see §9 |
-| R8 | `test_saves/round8/l7_bonus_gem_30.sav` | T7 with Future Tense at sapphire: 30 gold relics and 1 sapphire, 107%, 67 lives | The 47th gem spawns; picking it up gives 108% and sets `LastGemRewarded` (`l7_after.sav`). |
-| R8 | `test_saves/round8/l8_lives_255.sav` | 0019 with 255 lives | 255 shown; dying gives 254; at 254, picking up a life twice leaves 254 (`l8_after.sav`). |
-| R9 | `test_saves/round9/r9_lives_99.sav` | 0019 with 99 lives (the folder also holds 98, 100, 127, 128, 200 and 253, which weren't needed) | A pickup at 99 adds nothing. After a death (98), two pickups give 99, then nothing. |
+| lives42 | `live/lives42` | 0018 with lives 5 → 42 | 42 lives; dying gave 41 (0019) |
+| step2 | `step2.sav` | Deep Trouble: crystal, clear gem, red gem, gold relic, 2 times. Rooms up to 4 unlocked, with abilities. | All shown. The red platform works in Bone Yard. N. Tropy counts as beaten, room 4 is open, the spin works. The slot shows 24%. |
+| T1 | `t1_relics.sav` | Sapphire, platinum, a downgrade from gold, a relic without times, times without a relic | All shown as edited. 5 relics: the secret room offers level 26 only. |
+| T2 | `t2_gems.sav` | Second gems, a clear gem, all colored gems, including in never-entered levels | All shown. The red, purple, yellow and blue platforms work; Eggipus Rex is reachable. |
+| T3 | `t3_removal.sav` | Crystal, gem, relic and times off; red gem off; N. Tropy off; Double Jump off; Fruit Bazooka and Speed Shoes on | All applied. Toad Village lost its time trial. Room 4 locked again. The game kept every change on its next save (`t3_after.sav`). |
+| T4 | `t4_crystals.sav` | Crystals in 15–25 with N. Gin alive: 22 crystals | N. Gin's portal glitches over level 18 |
+| T4b | `live/t4b_room4` | Room 4 complete, 17 crystals, index 24 | No N. Gin portal |
+| T4c | `live/t4c_room5` | T4b plus room 5's crystals: 22, index 30 | Room 5 stays locked; glitch |
+| T4d | `live/t4d_rooms1to4` | 5/5/5/5/0 crystals | N. Gin's portal works. Beating him wrote `t4d_after.sav`. |
+| T4e | `live/t4e_rooms1to4_intro` | T4d plus `C3_NGin_Intro` seen | Same as T4d |
+| T4f | `live/t4f_mixed20` | 5/5/5/4/1 crystals | N. Gin's portal works |
+| T4g | `live/t4g_room3_short` | 5/5/2/5/3 crystals | Portal works |
+| T4h | `live/t4h_total22` | 5/5/5/5/2 crystals | Glitch |
+| T5 | `t5_secret_room.sav` | 20 gold relics; the flag table grows from 64 to 128 slots | Loads. Secret levels 26–29 open, 30 locked. The yellow gem picked up for real: `t5_after.sav`. |
+| T6 | `t6_full108.sav` | Everything (108%) | Everything works. Story scenes play once. Beating Cortex again plays the secret ending (`t6_after.sav`). |
+| T7 | `t7_bonus_gem.sav` | Everything, every relic gold, no bonus gem (107%) | The 47th gem spawns in the central warp room, with fireworks; picking it up gives 108%. Beating Cortex again plays the secret ending (`t7_after_beating_cortex.sav`). |
+| T8 | `live/t8_full108_scenes` | T6 with every story scene marked as seen | No scene plays |
+| R7 | `live/r7_base` → `r7a1.sav`–`r7a5.sav` | Under Pressure: quit at once, break a crate, collect fruit, lose a life, finish | `completions` rises only on the finish. `previous_level_*` follow the last level entered. Credits watched from the menu: the save didn't change. |
+| PC1 | `live/pc1_lives42` | Fresh PC save, lives 4 → 42, same size | 42 lives |
+| PC2 | `live/pc2_full108` | Everything; the file grows from 64,781 to 68,318 bytes | 108%, everything open, no story scenes |
+| R8 | `l1_switch_to_pc.sav` (PC) | 0019 with 61 lives, converted to PC with the fresh PC save as template | Same progress as 0019: totals, rooms, abilities, scenes. The game's save after finishing Toad Village (`l1_after.sav`) changes only Toad Village's `completions`, 5 → 6. |
+| R8 | `l2_pc_to_switch.sav` | Fresh PC save made 108% (platinum, a time just under each threshold, scenes seen), 62 lives, converted to Switch with the fresh Switch save as template | 108%, everything open, no scene plays. The game's save in the hub (`l2_after.sav`) keeps all game data and adds meaningless bytes as `previous_level_name` (§6). |
+| R8 | `l3_reset_level.sav` | 0019 with Under Pressure reset to never played, 63 lives | Under Pressure shows as never played: no crystal, gem, relic or time trial; totals 9 crystals, 5 gems; nothing else changed. Nothing special on the next visit. Finishing it (`l3_after.sav`) writes a normal first visit: state 1, `completions` 1, crystal. |
+| R8 | `l4_story_up_to_3.sav` | Fresh Switch save with rooms 1–3's crystals, the first three bosses with their abilities and scenes, 64 lives | Rooms 1–4 open, no N. Gin portal (15 crystals), no glitch, no scene plays, the three abilities work. `l4_after.sav`: Sphynxinator finished on a first visit. |
+| R8 | `l5_relics_matching.sav` | 0019 with gold on every level and a time just under gold where none earned it, 65 lives | 31 gold relics; every secret level opens. The game's save (`l5_after.sav`) changes nothing. |
+| R8 | `live/l6_relic_panels_pc` (PC) | PC2 with Deep Trouble, Double Header and Sphynxinator at sapphire and Future Frenzy at gold, 66 lives | The time panels show the next relic's time: see §9 |
+| R8 | `live/l7_bonus_gem_30` | T7 with Future Tense at sapphire: 30 gold relics and 1 sapphire, 107%, 67 lives | The 47th gem spawns; picking it up gives 108% and sets `LastGemRewarded` (`l7_after.sav`). |
+| R8 | `live/l8_lives_255` | 0019 with 255 lives | 255 shown; dying gives 254; at 254, picking up a life twice leaves 254 (`l8_after.sav`). |
+| R9 | `live/r9_lives_99` | 0019 with 99 lives (`live/r9_lives_<n>` also rebuilds the files for 98, 100, 127, 128, 200 and 253, which weren't needed) | A pickup at 99 adds nothing. After a death (98), two pickups give 99, then nothing. |
 
-`test_saves/t7_after_picking_47th_gem.sav` is byte-identical to `t7_bonus_gem.sav` (the wrong file was copied back); `t7_after_beating_cortex.sav` shows the gem taken. `test_saves/r7_racegems.sav` (both gems of Area 51? and Rings of Power removed) was prepared but not played.
+The game's save after the 47th gem was picked up in T7 is lost: the wrong file was copied back, a copy of `t7_bonus_gem.sav`. `t7_after_beating_cortex.sav` shows the gem taken. `live/r7_racegems` (both gems of Area 51? and Rings of Power removed) was prepared but not played.
 
 ## 11. Save log
 
@@ -430,7 +430,7 @@ One Switch playthrough, saved in the hub after each step.
 | `0016.sav` | Midnight Run: crystal; only the boss is left in room 2 |
 | `0017.sav` | Dingodile beaten; Double Jump; room 3 opens |
 | `0018.sav` | Double Header finished without its crystal |
-| `0019.sav` | `test_saves/lives42.sav` loaded (42 lives), Toad Village entered, one life lost, quit |
+| `0019.sav` | `live/lives42` loaded (42 lives), Toad Village entered, one life lost, quit |
 
 ## Sources
 

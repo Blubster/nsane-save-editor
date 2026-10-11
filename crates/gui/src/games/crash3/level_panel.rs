@@ -930,7 +930,7 @@ mod tests {
         // between 0010 and 0011 (which also counted the finish).
         let toad = level("toadvillage");
         let read = |rel: &str| Crash3Save::parse(&std::fs::read(repo_file(rel)).unwrap()).unwrap();
-        let mut save = read("saves/0010.sav");
+        let mut save = read("tests/saves/game/0010.sav");
         let times = save.times(toad);
         assert_eq!(times, [6023]);
         let edits = [
@@ -943,7 +943,7 @@ mod tests {
         for edit in edits {
             save.apply(&edit).unwrap();
         }
-        let expected = read("saves/0011.sav");
+        let expected = read("tests/saves/game/0011.sav");
         let values = |s: &Crash3Save| -> Vec<String> {
             let session = s.session(toad).unwrap();
             (0..field::NAMES.len())

@@ -3,7 +3,6 @@
 //! game wrote at that step.
 
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
 
 use nsane::crash3::tables::{SECRET_ENDING_KEY, cutscene_key};
 use nsane::crash3::{
@@ -11,14 +10,14 @@ use nsane::crash3::{
 };
 use nsane::igb::{FieldValue, IgbFile, SummaryValue, latin1};
 
-fn repo() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
+#[path = "support/corpus.rs"]
+mod corpus;
 
+/// A save under `tests/saves/`, or `live/<name>`, a save rebuilt from its
+/// recipe.
 fn load(rel: &str) -> Crash3Save {
-    let path = repo().join(rel);
-    let data = std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-    Crash3Save::parse(&data).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+    let data = corpus::input(rel).unwrap_or_else(|e| panic!("{e}"));
+    Crash3Save::parse(&data).unwrap_or_else(|e| panic!("{rel}: {e}"))
 }
 
 fn id(key: &str) -> LevelId {
@@ -74,7 +73,7 @@ fn variable_on(save: &Crash3Save, name: &str) -> bool {
 #[test]
 fn gold_relic_edit_reproduces_game() {
     let level = id("toadvillage");
-    let mut save = load("saves/0010.sav");
+    let mut save = load("tests/saves/game/0010.sav");
     let times_cs = vec![
         parse_time("0:55:44").unwrap(),
         parse_time("1:00:23").unwrap(),
@@ -100,7 +99,7 @@ fn gold_relic_edit_reproduces_game() {
     let mut save = Crash3Save::from_igb(igb).unwrap();
 
     let edited = reload(&mut save);
-    let expected = load("saves/0011.sav");
+    let expected = load("tests/saves/game/0011.sav");
     assert_eq!(zone_values(&edited, level), zone_values(&expected, level));
     assert_eq!(
         edited.igb().summary().entries(),
@@ -111,7 +110,7 @@ fn gold_relic_edit_reproduces_game() {
 #[test]
 fn boss_and_ability_edit_reproduces_game() {
     let boss = id("tinytiger");
-    let mut save = load("saves/0008.sav");
+    let mut save = load("tests/saves/game/0008.sav");
     apply(
         &mut save,
         &[
@@ -127,7 +126,7 @@ fn boss_and_ability_edit_reproduces_game() {
         ],
     );
     let edited = reload(&mut save);
-    let expected = load("saves/0009.sav");
+    let expected = load("tests/saves/game/0009.sav");
     assert_eq!(zone_values(&edited, boss), zone_values(&expected, boss));
     assert!(edited.ability(Ability::BodySlam));
     assert_eq!(
@@ -139,7 +138,7 @@ fn boss_and_ability_edit_reproduces_game() {
 #[test]
 fn crystal_and_gem_edit_reproduces_game() {
     let level = id("underpressure");
-    let mut save = load("saves/0004.sav");
+    let mut save = load("tests/saves/game/0004.sav");
     apply(
         &mut save,
         &[
@@ -150,13 +149,13 @@ fn crystal_and_gem_edit_reproduces_game() {
     let edited = reload(&mut save);
     assert_eq!(
         zone_values(&edited, level),
-        zone_values(&load("saves/0005.sav"), level)
+        zone_values(&load("tests/saves/game/0005.sav"), level)
     );
 }
 
 #[test]
 fn full_completion_fits_in_file() {
-    let mut save = load("saves/initial_game.sav");
+    let mut save = load("tests/saves/game/initial_game.sav");
     let mut edits = Vec::new();
     for level in LevelId::all().filter(|l| l.level().kind != Kind::Boss) {
         // Turning off a crystal a level doesn't have changes nothing: skipped.
@@ -195,7 +194,7 @@ fn full_completion_fits_in_file() {
 #[test]
 fn removing_crystal_clears_field12() {
     let level = id("toadvillage");
-    let mut save = load("saves/0017.sav");
+    let mut save = load("tests/saves/game/0017.sav");
     assert!(save.crystal(level) && save.crystal_field(level));
     apply(&mut save, &[Edit::SetCrystal { level, on: false }]);
     let edited = reload(&mut save);
@@ -206,7 +205,7 @@ fn removing_crystal_clears_field12() {
 /// Gin's portal glitch.
 #[test]
 fn completing_a_room_reaches_its_boss() {
-    let mut save = load("saves/0019.sav");
+    let mut save = load("tests/saves/game/0019.sav");
     let edits: Vec<_> = (16..=20)
         .map(|n| Edit::SetCrystal {
             level: by_number(n),
@@ -224,9 +223,9 @@ fn completing_a_room_reaches_its_boss() {
 #[test]
 fn editor_yellow_gem_matches_game() {
     let level = id("hangemhigh");
-    let mut save = load("test_saves/t5_secret_room.sav");
+    let mut save = load("tests/saves/edited/t5_secret_room.sav");
     apply(&mut save, &[Edit::SetColoredGem { level, on: true }]);
-    let game = load("test_saves/t5_after.sav");
+    let game = load("tests/saves/after_edit/t5_after.sav");
     assert_eq!(save.flags(level), game.flags(level));
     assert!(variable_on(&save, "Gem_Yellow"));
     assert!(variable_on(&game, "Gem_Yellow"));
@@ -236,11 +235,11 @@ fn editor_yellow_gem_matches_game() {
 /// beaten again.
 #[test]
 fn game_bonus_gem_and_cortex_rematch() {
-    let game = load("test_saves/t7_after_beating_cortex.sav");
+    let game = load("tests/saves/after_edit/t7_after_beating_cortex.sav");
     assert!(game.bonus_gem() && game.flag(SECRET_ENDING_KEY));
     assert_eq!(summary(&game, "story_completed"), SummaryValue::Int(1));
 
-    let mut save = load("test_saves/t7_bonus_gem.sav");
+    let mut save = load("tests/saves/edited/t7_bonus_gem.sav");
     apply(&mut save, &[Edit::SetBonusGem { on: true }]);
     let edited = reload(&mut save);
     assert_eq!(
@@ -258,7 +257,7 @@ fn game_bonus_gem_and_cortex_rematch() {
 /// 108% save made by another player.
 #[test]
 fn all_cutscenes_give_the_scene_keys_of_a_finished_game() {
-    let mut save = load("saves/0019.sav");
+    let mut save = load("tests/saves/game/0019.sav");
     let edits: Vec<_> = CUTSCENES
         .iter()
         .flat_map(|step| step.scenes)
@@ -302,7 +301,7 @@ fn all_cutscenes_give_the_scene_keys_of_a_finished_game() {
 #[test]
 fn editor_boss_matches_game_ngin_win() {
     let boss = id("ngin");
-    let mut save = load("test_saves/t4d_rooms1to4.sav");
+    let mut save = load("live/t4d_rooms1to4");
     apply(
         &mut save,
         &[
@@ -318,7 +317,7 @@ fn editor_boss_matches_game_ngin_win() {
         ],
     );
     let edited = reload(&mut save);
-    let game = load("test_saves/t4d_after.sav");
+    let game = load("tests/saves/after_edit/t4d_after.sav");
     assert_eq!(edited.flags(boss), game.flags(boss));
     assert!(edited.ability(Ability::Bazooka) && game.ability(Ability::Bazooka));
     for key in ["percent_complete", "farthest_progression_index"] {
@@ -335,9 +334,9 @@ fn editor_boss_matches_game_ngin_win() {
 /// PC saves are not padded to a fixed size: they grow with the data.
 #[test]
 fn pc_save_is_written_unpadded() {
-    let raw = std::fs::read(repo().join("saves/ALCHEMYXSAVE_8.sav")).unwrap();
+    let raw = corpus::read("tests/saves/game/ALCHEMYXSAVE_8.sav");
     assert!(!IgbFile::parse(&raw).unwrap().padded());
-    assert!(load("saves/0019.sav").igb().padded());
+    assert!(load("tests/saves/game/0019.sav").igb().padded());
 
     let mut save = Crash3Save::parse(&raw).unwrap();
     let edits: Vec<_> = LevelId::all()
@@ -358,7 +357,7 @@ fn pc_save_is_written_unpadded() {
 /// sapphire, not two.
 #[test]
 fn bonus_gem_due_after_relic_edits() {
-    let mut save = load("test_saves/t7_bonus_gem.sav");
+    let mut save = load("tests/saves/edited/t7_bonus_gem.sav");
     assert!(save.bonus_gem_due());
     apply(
         &mut save,
@@ -382,7 +381,7 @@ fn bonus_gem_due_after_relic_edits() {
 
 #[test]
 fn failing_apply_leaves_the_save_unchanged() {
-    let original = load("saves/0019.sav");
+    let original = load("tests/saves/game/0019.sav");
     let mut save = original.clone();
     let err = save
         .apply(&Edit::SetCrystal {
@@ -414,7 +413,7 @@ fn failing_apply_leaves_the_save_unchanged() {
 /// Edits built in code get the checks the JSON reader makes on ids.
 #[test]
 fn apply_checks_the_kind_of_each_id() {
-    let mut save = load("saves/0019.sav");
+    let mut save = load("tests/saves/game/0019.sav");
     let before = save.clone();
     let cases = [
         (
@@ -573,7 +572,7 @@ fn edit_errors_have_the_contract_codes() {
 
 #[test]
 fn edits_describe_themselves_for_the_history() {
-    let save = load("saves/0019.sav");
+    let save = load("tests/saves/game/0019.sav");
     let cases = [
         (
             Edit::SetCrystal {

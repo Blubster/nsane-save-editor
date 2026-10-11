@@ -1,14 +1,18 @@
-//! Builds the saves of a round of in-game tests into `test_saves/round8/`:
-//! the Switch ↔ PC conversion, resetting a level, two presets, the bonus gem
-//! with one relic below gold, the largest life count, and a PC save that
-//! shows the relic times of a few levels on their time panels.
+//! Builds the saves of a round of in-game tests: the Switch ↔ PC
+//! conversion, resetting a level, two presets, the bonus gem with one relic
+//! below gold, the largest life count, and a PC save that shows the relic
+//! times of a few levels on their time panels.
 //!
-//!     cargo run -p nsane --example make_live_round8
+//!     cargo run -p nsane --example make_live_round8 [OUTPUT_FOLDER]
 //!
-//! Each file has its own life count, so the save slot screen tells which one
-//! is loaded. Every file is read back and checked before it is written. A
-//! file that already exists is never replaced: once loaded in game it is
-//! test evidence, so a run that would write other bytes stops instead.
+//! The files go to `OUTPUT_FOLDER`, `target/live-round8` by default. Each
+//! file has its own life count, so the save slot screen tells which one is
+//! loaded. Every file is read back and checked before it is written. A file
+//! that already exists is never replaced: once loaded in game it is test
+//! evidence, so a run that would write other bytes stops instead.
+//!
+//! The first five files are kept in `tests/saves/edited/`; the tests rebuild
+//! the last three from their recipes (`tests/saves/README.md`).
 
 use std::path::{Path, PathBuf};
 
@@ -20,15 +24,15 @@ use nsane::crash3::{
 use nsane::diff::{Change, diff};
 use nsane::transfer::transfer;
 
+#[path = "../tests/support/corpus.rs"]
+mod corpus;
+
 const SWITCH_SIZE: usize = 153_600;
 
-fn repo() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
-
+/// A save under `tests/saves/`, or `live/<name>`, a save rebuilt from its
+/// recipe.
 fn load(rel: &str) -> Crash3Save {
-    let path = repo().join(rel);
-    let data = std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let data = corpus::input(rel).unwrap_or_else(|e| panic!("{e}"));
     Crash3Save::parse(&data).unwrap_or_else(|e| panic!("{rel}: {e}"))
 }
 
@@ -134,9 +138,9 @@ fn assert_same_game_data(name: &str, source: &Crash3Save, converted: &Crash3Save
 /// A Switch playthrough save (19%) on PC, converted into the PC new-game
 /// save. Expect the same progress, abilities, scenes and 61 lives.
 fn switch_to_pc() -> Vec<u8> {
-    let mut source = load("saves/0019.sav");
+    let mut source = load("tests/saves/game/0019.sav");
     lives(&mut source, 61);
-    let converted = transfer(&source, &load("saves/ALCHEMYXSAVE_8.sav")).unwrap();
+    let converted = transfer(&source, &load("tests/saves/game/ALCHEMYXSAVE_8.sav")).unwrap();
     let expect = Expect {
         platform: Platform::Pc,
         lives: 61,
@@ -154,11 +158,11 @@ fn switch_to_pc() -> Vec<u8> {
 /// A 108% PC save on the Switch: everything completed on the PC new-game
 /// save, converted into the Switch new-game save. 62 lives.
 fn pc_to_switch() -> Vec<u8> {
-    let mut source = load("saves/ALCHEMYXSAVE_8.sav");
+    let mut source = load("tests/saves/game/ALCHEMYXSAVE_8.sav");
     let edits = presets::complete_all(&source, &CompleteAll::default());
     apply(&mut source, &edits);
     lives(&mut source, 62);
-    let converted = transfer(&source, &load("saves/initial_game.sav")).unwrap();
+    let converted = transfer(&source, &load("tests/saves/game/initial_game.sav")).unwrap();
     let expect = Expect {
         platform: Platform::Switch,
         lives: 62,
@@ -178,7 +182,7 @@ fn pc_to_switch() -> Vec<u8> {
 /// crystal and clear gem go (crystals 10 → 9, gems 6 → 5), and nothing else
 /// in the game data changes. 63 lives.
 fn reset_level() -> Vec<u8> {
-    let source = load("saves/0019.sav");
+    let source = load("tests/saves/game/0019.sav");
     let up = level("underpressure");
     assert!(source.crystal(up) && source.gem(up) && source.entered(up));
     let mut save = source.clone();
@@ -213,7 +217,7 @@ fn reset_level() -> Vec<u8> {
 /// their abilities and without their story scenes. Warp rooms 1–4 open,
 /// N. Gin's portal not there yet. 64 lives.
 fn story_up_to_3() -> Vec<u8> {
-    let mut save = load("saves/initial_game.sav");
+    let mut save = load("tests/saves/game/initial_game.sav");
     let options = StoryUpTo {
         with_gems: false,
         with_abilities: true,
@@ -252,7 +256,7 @@ fn story_up_to_3() -> Vec<u8> {
 /// centisecond under the gold threshold where the level had no time that
 /// earns it. 31 relics open every level of the secret warp room. 65 lives.
 fn relics_matching() -> Vec<u8> {
-    let mut save = load("saves/0019.sav");
+    let mut save = load("tests/saves/game/0019.sav");
     let edits = presets::all_relics(&save, Relic::Gold, &AllRelics::default());
     apply(&mut save, &edits);
     lives(&mut save, 65);
@@ -282,7 +286,7 @@ fn relics_matching() -> Vec<u8> {
 /// Tense at sapphire: 30 gold relics and 107%. The game should still give
 /// the bonus gem in the hub. 67 lives.
 fn bonus_gem_30() -> Vec<u8> {
-    let mut save = load("test_saves/t7_bonus_gem.sav");
+    let mut save = load("tests/saves/edited/t7_bonus_gem.sav");
     let t = save.totals();
     assert_eq!((t.gold, t.sapphire, t.platinum), (31, 0, 0));
     assert!(!save.bonus_gem());
@@ -319,7 +323,7 @@ fn bonus_gem_30() -> Vec<u8> {
 /// time 1 centisecond under its new relic's threshold. Sphynxinator, whose
 /// gold time every source agrees on, is the control. 66 lives.
 fn relic_panels_pc() -> Vec<u8> {
-    let mut save = load("test_saves/pc/pc2_full108.sav");
+    let mut save = load("live/pc2_full108");
     let below = [
         ("deeptrouble", Relic::Sapphire),
         ("doubleheader", Relic::Sapphire),
@@ -370,7 +374,7 @@ fn relic_panels_pc() -> Vec<u8> {
 
 /// The 19% playthrough save with 255 lives, the most the counter holds.
 fn lives_255() -> Vec<u8> {
-    let mut save = load("saves/0019.sav");
+    let mut save = load("tests/saves/game/0019.sav");
     lives(&mut save, 255);
     let expect = Expect {
         platform: Platform::Switch,
@@ -396,7 +400,9 @@ fn main() {
         ("l7_bonus_gem_30.sav", bonus_gem_30()),
         ("l8_lives_255.sav", lives_255()),
     ];
-    let dir = repo().join("test_saves/round8");
+    let dir = std::env::args_os()
+        .nth(1)
+        .map_or_else(|| corpus::repo().join("target/live-round8"), PathBuf::from);
     std::fs::create_dir_all(&dir).unwrap();
     for (name, bytes) in &built {
         write(&dir, name, bytes);
