@@ -1,24 +1,39 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // no console window on Windows in release
 
 mod app;
+mod gallery;
+mod icons;
+mod options;
+#[cfg(not(target_arch = "wasm32"))]
+mod screenshot;
+mod theme;
 
 use app::App;
+use options::Options;
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
     env_logger::init(); // RUST_LOG=debug for more
 
+    let options = match Options::parse(std::env::args().skip(1)) {
+        Ok(options) => options,
+        Err(e) => {
+            eprintln!("{e}\n\n{}", options::USAGE);
+            std::process::exit(2);
+        }
+    };
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title(app::APP_TITLE)
-            .with_inner_size([1024.0, 720.0])
-            .with_min_inner_size([480.0, 320.0]),
+            .with_inner_size(options.size.unwrap_or([1024.0, 720.0]))
+            .with_min_inner_size([480.0, 320.0])
+            .with_maximized(options.maximized),
         ..Default::default()
     };
     eframe::run_native(
         app::APP_TITLE,
         native_options,
-        Box::new(|cc| Ok(Box::new(App::new(cc)))),
+        Box::new(|cc| Ok(Box::new(App::new(cc, options)))),
     )
 }
 
@@ -46,7 +61,7 @@ fn main() {
             .start(
                 canvas,
                 web_options,
-                Box::new(|cc| Ok(Box::new(App::new(cc)))),
+                Box::new(|cc| Ok(Box::new(App::new(cc, Options::default())))),
             )
             .await;
 

@@ -1487,6 +1487,7 @@ dependencies = [
  "env_logger",
  "log",
  "nsane",
+ "png",
  "wasm-bindgen-futures",
  "web-sys",
 ]

@@ -24,6 +24,7 @@ log = "0.4.27"
 
 # native
 env_logger = "0.11.8"
+png = "0.18.1"
 
 # web
 wasm-bindgen-futures = "0.4.50"
