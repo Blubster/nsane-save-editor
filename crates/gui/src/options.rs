@@ -13,16 +13,32 @@ pub enum View {
     Unsaved,
     /// A refused time in the selected level's third leaderboard field.
     InvalidTime,
+    /// The Progress tab.
+    Progress,
+    /// The Progress tab with the dialog that unlocks the first locked warp
+    /// room.
+    UnlockDialog,
+    /// The Progress tab scrolled to the story scenes.
+    Cutscenes,
 }
 
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))] // set from the command line
 impl View {
-    pub const ALL: [View; 2] = [View::Unsaved, View::InvalidTime];
+    pub const ALL: [View; 5] = [
+        View::Unsaved,
+        View::InvalidTime,
+        View::Progress,
+        View::UnlockDialog,
+        View::Cutscenes,
+    ];
 
     pub fn name(self) -> &'static str {
         match self {
             View::Unsaved => "unsaved",
             View::InvalidTime => "invalid-time",
+            View::Progress => "progress",
+            View::UnlockDialog => "unlock-dialog",
+            View::Cutscenes => "cutscenes",
         }
     }
 
@@ -71,7 +87,10 @@ usage: nsane-save-editor [options]
   --select LEVEL         select a level by its key, e.g. toadvillage
   --view NAME            set up a state at start: unsaved (the question
                          before closing), invalid-time (a refused time
-                         typed for the selected level)
+                         typed for the selected level), progress (the
+                         Progress tab), unlock-dialog (its dialog for the
+                         first locked warp room), cutscenes (its story
+                         scenes)
   --icon-gallery         show every icon in every state and size
   --theme light|dark     force a theme instead of following the system
   --size WxH             inner window size in points, e.g. 1280x800

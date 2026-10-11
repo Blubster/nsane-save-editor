@@ -229,6 +229,7 @@ impl App {
             .or(options.dark)
             .or(prefs.dark)
             .unwrap_or(ctx.theme() == egui::Theme::Dark);
+        theme::fonts(ctx);
         theme::apply(ctx, dark);
         let mut app = Self {
             dark,
@@ -264,6 +265,13 @@ impl App {
                     app.crash3.refused_time(&file.doc, level, 2, "1:7x");
                 }
             }
+            Some(View::Progress) => app.crash3.show_progress(),
+            Some(View::UnlockDialog) => {
+                if let Some(file) = &app.file {
+                    app.crash3.unlock_dialog(&file.doc);
+                }
+            }
+            Some(View::Cutscenes) => app.crash3.scroll_to_scenes(),
             None => {}
         }
         app
@@ -581,7 +589,7 @@ impl App {
 
     /// The keyboard shortcuts of this frame.
     fn shortcuts(&mut self, ctx: &Context, actions: &mut Vec<Action>) {
-        if self.dialog.is_some() {
+        if self.dialog.is_some() || self.crash3.has_dialog() {
             return;
         }
         // A text field keeps its own undo, and holds a value not applied

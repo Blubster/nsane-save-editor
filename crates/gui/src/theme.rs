@@ -253,6 +253,17 @@ pub fn palette(dark: bool) -> &'static Palette {
     if dark { &DARK } else { &LIGHT }
 }
 
+/// Adds the bundled monospace font as the last fallback of the
+/// proportional text, which has no arrows: "19% → 20%" in a preview.
+/// Called once, at start.
+pub fn fonts(ctx: &Context) {
+    let mut fonts = egui::FontDefinitions::default();
+    if let Some(family) = fonts.families.get_mut(&FontFamily::Proportional) {
+        family.push("Hack".to_owned());
+    }
+    ctx.set_fonts(fonts);
+}
+
 /// Switches egui to the light or dark theme and styles it from the palette.
 pub fn apply(ctx: &Context, dark: bool) {
     let theme = if dark { Theme::Dark } else { Theme::Light };

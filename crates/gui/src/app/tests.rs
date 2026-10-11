@@ -944,3 +944,209 @@ fn the_invalid_time_view_shows_a_refused_entry() {
         [5544, 6023, 7000]
     );
 }
+
+// ------------------------------------------------------------ progress tab
+
+fn progress_harness(rel: &str) -> Harness<'static, App> {
+    let mut harness = tall_harness(opening(repo_file(rel)));
+    click(&mut harness, "Progress");
+    harness
+}
+
+/// Clicks a button that opens a dialog, and lets the dialog settle: a
+/// modal takes a few frames to reach its size.
+fn open_dialog(harness: &mut Harness<'_, App>, label: &str) {
+    click(harness, label);
+    harness.run_steps(4);
+}
+
+#[test]
+fn unlocking_room_4_matches_the_golden_output() {
+    use crate::games::crash3::Tab;
+    let mut harness = progress_harness("saves/0019.sav");
+    assert_eq!(harness.state().crash3.tab(), Tab::Progress);
+    // Rooms 1–3 are open on 0019: only rooms 4 and 5 offer an unlock.
+    assert!(harness.query_by_label("Unlock up to room 3…").is_none());
+    open_dialog(&mut harness, "Unlock up to room 4…");
+    for option in [
+        "Also grant the abilities of the defeated bosses",
+        "Skip their story scenes",
+    ] {
+        let checkbox = harness.get_by_label(option);
+        assert_eq!(
+            checkbox.accesskit_node().toggled(),
+            Some(egui::accesskit::Toggled::True)
+        );
+    }
+    harness.get_by_label("Each defeated boss counts 1% towards the percentage.");
+    harness.get_by_label("Percentage: 19% → 20%");
+    // Shortcuts wait while the dialog is open.
+    press(&mut harness, Modifiers::COMMAND, Key::Z);
+    assert!(history(&harness).is_empty());
+
+    click(&mut harness, "Apply");
+    assert!(!harness.state().crash3.has_dialog());
+    assert_eq!(
+        history(&harness),
+        ["Unlock warp room 4 (+abilities, skip scenes)"]
+    );
+    let bytes = doc(&harness).to_bytes().unwrap();
+    assert_eq!(
+        sha256_hex(&bytes),
+        golden_sha256("ops/unlock_warp_room_4_all_0019")
+    );
+    // Undo keeps the tab.
+    press(&mut harness, Modifiers::COMMAND, Key::Z);
+    assert!(history(&harness).is_empty());
+    assert_eq!(harness.state().crash3.tab(), Tab::Progress);
+}
+
+#[test]
+fn the_preview_runs_only_when_the_options_change() {
+    let mut harness = progress_harness("saves/0019.sav");
+    open_dialog(&mut harness, "Unlock up to room 5…");
+    harness.run_steps(5);
+    assert_eq!(harness.state().crash3.preview_runs(), Some(1));
+    click(&mut harness, "Skip their story scenes");
+    harness.run_steps(5);
+    assert_eq!(harness.state().crash3.preview_runs(), Some(2));
+    click(&mut harness, "Apply");
+    assert_eq!(history(&harness), ["Unlock warp room 5 (+abilities)"]);
+    let save = doc(&harness).current();
+    assert!(save.boss_defeated(level("ngin")));
+    assert!(!save.cutscene_seen("C3_NGin_Intro"));
+    assert!(save.ability(nsane::crash3::Ability::Bazooka));
+
+    // Cancel applies nothing.
+    let mut harness = progress_harness("saves/0019.sav");
+    open_dialog(&mut harness, "Unlock up to room 4…");
+    click(&mut harness, "Cancel");
+    assert!(!harness.state().crash3.has_dialog());
+    assert!(history(&harness).is_empty());
+}
+
+#[test]
+fn skip_all_story_scenes_leaves_the_18_scene_keys() {
+    use nsane::crash3::CUTSCENES;
+    use nsane::crash3::tables::{cutscene_key, cutscene_name};
+    let mut harness = progress_harness("saves/0019.sav");
+    click(&mut harness, "Skip all story scenes");
+    assert_eq!(history(&harness), ["All story scenes: seen"]);
+    let scenes: Vec<String> = doc(&harness)
+        .current()
+        .flag_entries()
+        .into_keys()
+        .filter(|k| cutscene_name(k).is_some())
+        .collect();
+    let mut expected: Vec<String> = CUTSCENES
+        .iter()
+        .flat_map(|s| s.scenes)
+        .map(|s| cutscene_key(s))
+        .collect();
+    expected.sort();
+    assert_eq!(expected.len(), 18);
+    assert_eq!(scenes, expected);
+    // Nothing left to skip.
+    assert!(
+        harness
+            .get_by_label("Skip all story scenes")
+            .accesskit_node()
+            .is_disabled()
+    );
+}
+
+#[test]
+fn opening_the_secret_room_up_to_29() {
+    let mut harness = progress_harness("saves/0019.sav");
+    open_dialog(&mut harness, "Open up to 29…");
+    harness.get_by_label("Relics: 1 → 20");
+    click(&mut harness, "Apply");
+    assert_eq!(
+        history(&harness),
+        ["Reach 20 relics: sapphire on 19 levels"]
+    );
+    assert!(doc(&harness).current().totals().relics() >= 20);
+    // The room grid shows 26–29 open and 30 locked.
+    click(&mut harness, "Levels");
+    for name in [
+        "26 Ski Crazed",
+        "27 Hang'em High",
+        "28 Area 51?",
+        "29 Future Frenzy",
+    ] {
+        harness.get_by_label(&format!("{name}: open"));
+    }
+    harness.get_by_label("30 Rings of Power: locked");
+}
+
+#[test]
+fn super_powers_and_scenes_are_one_step_each() {
+    use nsane::crash3::{ABILITIES, Ability};
+    let mut harness = progress_harness("saves/0019.sav");
+    click(&mut harness, "Super power: Speed Shoes");
+    assert!(doc(&harness).current().ability(Ability::SpeedShoes));
+    click(&mut harness, "All on");
+    assert!(
+        ABILITIES
+            .iter()
+            .all(|&a| doc(&harness).current().ability(a))
+    );
+    assert!(
+        harness
+            .get_by_label("All on")
+            .accesskit_node()
+            .is_disabled()
+    );
+    click(&mut harness, "All off");
+    assert!(
+        ABILITIES
+            .iter()
+            .all(|&a| !doc(&harness).current().ability(a))
+    );
+
+    click(&mut harness, "Dr. N. Tropy: mark all seen");
+    click(&mut harness, "NGin Intro: seen");
+    let save = doc(&harness).current();
+    for scene in [
+        "C3_NTropy_Hub3_Intro",
+        "C3_NTropy_PreFight",
+        "C3_NTropy_Taunt",
+        "C3_Cortex_Post_NTropy_Fight",
+        "C3_NGin_Intro",
+    ] {
+        assert!(save.cutscene_seen(scene), "{scene}");
+    }
+    click(&mut harness, "Dr. N. Tropy: mark all unseen");
+    assert!(!doc(&harness).current().cutscene_seen("C3_NTropy_Taunt"));
+    assert_eq!(
+        history(&harness),
+        [
+            "Speed Shoes: on",
+            "All super powers: on",
+            "All super powers: off",
+            "Dr. N. Tropy scenes: seen",
+            "Scene C3_NGin_Intro: seen",
+            "Dr. N. Tropy scenes: not seen",
+        ]
+    );
+    // A boss toggle on the rooms list, as in the grid.
+    click(&mut harness, "N. Gin: defeated");
+    assert!(doc(&harness).current().boss_defeated(level("ngin")));
+}
+
+#[test]
+fn the_progress_views() {
+    use crate::games::crash3::Tab;
+    let options = |view| Options {
+        view: Some(view),
+        ..opening_options("saves/0019.sav")
+    };
+    let harness = harness(app(options(View::UnlockDialog)));
+    assert!(harness.state().crash3.has_dialog());
+    harness.get_by_label("Unlock up to Warp Room 4");
+    let harness = self::harness(app(options(View::Cutscenes)));
+    assert_eq!(harness.state().crash3.tab(), Tab::Progress);
+    harness.get_by_label("Story scenes");
+    let harness = self::harness(app(options(View::Progress)));
+    assert_eq!(harness.state().crash3.tab(), Tab::Progress);
+}

@@ -16,7 +16,7 @@ use crate::theme;
 /// The narrowest a card gets before the grid drops a column.
 const MIN_CARD_WIDTH: f32 = 330.0;
 /// Space between cards.
-const CARD_GAP: f32 = 12.0;
+pub const CARD_GAP: f32 = 12.0;
 /// The relic counts that open the secret room's levels start here.
 const SECRET_ROOM_OPENS_AT: u32 = SECRET_ROOM[0].relics as u32;
 
@@ -61,7 +61,7 @@ pub fn grid(
     });
 }
 
-fn card(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
+pub fn card(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
     let pal = theme::palette(ui.visuals().dark_mode);
     Frame::new()
         .fill(pal.surface)

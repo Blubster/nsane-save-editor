@@ -59,7 +59,7 @@ The file dialogs go through the desktop portal (`xdg-desktop-portal`) over D-Bus
 |---|---|
 | `--open FILE.sav` | Open a save at start. |
 | `--select LEVEL` | Select a level by its key (`toadvillage`, `deeptrouble`, …). |
-| `--view NAME` | Show a dialog at start: `unsaved` (the question asked before unsaved changes are lost). |
+| `--view NAME` | Set up a state at start: `unsaved` (the question asked before unsaved changes are lost), `invalid-time` (a refused time typed for the selected level), `progress` (the Progress tab), `unlock-dialog` (its dialog for the first locked warp room), `cutscenes` (the Progress tab scrolled to the story scenes). |
 | `--theme light\|dark` | Force a theme instead of following the system. |
 | `--size WxH` | Inner window size in points, for example `1280x800`. |
 | `--maximized` | Start maximized. |

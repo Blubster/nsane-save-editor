@@ -58,6 +58,11 @@ pub struct LevelPanel {
 }
 
 impl LevelPanel {
+    /// Whether the reset question is open.
+    pub fn has_dialog(&self) -> bool {
+        self.confirm_reset.is_some()
+    }
+
     pub fn show(
         &mut self,
         ui: &mut Ui,
