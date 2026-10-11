@@ -126,7 +126,7 @@ pub fn local_now() -> (i32, u8, u8, u8, u8, u8) {
 
 /// The backup name for `path` at `now`, numbered when a backup of the same
 /// second already exists, so that no backup is ever overwritten.
-fn free_backup_path(path: &Path, now: (i32, u8, u8, u8, u8, u8)) -> PathBuf {
+pub fn free_backup_path(path: &Path, now: (i32, u8, u8, u8, u8, u8)) -> PathBuf {
     let first = nsane::backup_path(path, now);
     let stem = first.file_stem().unwrap_or_default().to_string_lossy();
     let mut candidate = first.clone();

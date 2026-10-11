@@ -83,6 +83,18 @@ fn press(harness: &mut Harness<'_, App>, modifiers: Modifiers, key: Key) {
     harness.run_steps(2);
 }
 
+/// Saves from the review shown before saving.
+fn confirm_review(harness: &mut Harness<'_, App>) {
+    assert!(
+        matches!(harness.state().dialog, Some(Dialog::Review { .. })),
+        "the review is shown"
+    );
+    harness.run_steps(4); // a modal takes a few frames to reach its size
+    harness.get_by_label("Save file").click();
+    harness.run_steps(2);
+    assert!(harness.state().dialog.is_none());
+}
+
 fn backups(dir: &Path) -> Vec<PathBuf> {
     let mut found: Vec<_> = fs::read_dir(dir)
         .unwrap()
@@ -190,6 +202,7 @@ fn lives_42_gives_the_file_tested_in_game() {
     harness.get_by_label("• 1 change");
 
     press(&mut harness, Modifiers::COMMAND, Key::S);
+    confirm_review(&mut harness);
     let tested = fs::read(repo_file("test_saves/lives42.sav")).unwrap();
     assert!(
         fs::read(&path).unwrap() == tested,
@@ -258,6 +271,7 @@ fn save_shortcut_while_typing_includes_the_typed_value() {
     start_typing_lives(&mut harness, "42");
     harness.key_press_modifiers(Modifiers::COMMAND, Key::S);
     harness.run_steps(3);
+    confirm_review(&mut harness);
     assert_eq!(
         fs::read(&path).unwrap(),
         fs::read(repo_file("test_saves/lives42.sav")).unwrap()
@@ -485,6 +499,9 @@ fn theme_and_panels_survive_a_restart() {
     first.set_size(Vec2::new(600.0, 800.0));
     first.run_steps(2);
     first.get_by_label(if dark { "☀" } else { "🌙" }).click();
+    // The theme's text sizes widen the toolbar, which then wraps: the
+    // games bar moves down before it can be clicked.
+    first.run_steps(2);
     first.get_by_label("Overview").click();
     first.run_steps(2);
     assert_eq!(first.state().dark, !dark);
@@ -1149,4 +1166,372 @@ fn the_progress_views() {
     harness.get_by_label("Story scenes");
     let harness = self::harness(app(options(View::Progress)));
     assert_eq!(harness.state().crash3.tab(), Tab::Progress);
+}
+
+// ------------------------------------------------- presets, diagnostics, review
+
+/// Picks an entry of the Presets menu and lets its dialog settle.
+fn open_preset(harness: &mut Harness<'_, App>, entry: &str) {
+    click(harness, "Presets");
+    open_dialog(harness, entry);
+}
+
+fn serious_diagnostics(harness: &Harness<'_, App>) -> Vec<&'static str> {
+    doc(harness)
+        .diagnostics()
+        .iter()
+        .filter(|d| d.severity > nsane::crash3::Severity::Info)
+        .map(|d| d.code)
+        .collect()
+}
+
+#[test]
+fn complete_everything_from_the_presets_menu() {
+    let mut harness = tall_harness(opening(repo_file("saves/0019.sav")));
+    open_preset(&mut harness, "Complete everything (108%)…");
+    assert!(harness.state().crash3.has_dialog());
+    harness.get_by_label("Percentage: 19% → 108%");
+    harness.get_by_label("Crystals: 10 → 25");
+    harness.get_by_label("Everything the game counts is collected.");
+    // Shortcuts wait while the dialog is open.
+    press(&mut harness, Modifiers::COMMAND, Key::Z);
+    assert_eq!(harness.state().crash3.preset_preview_runs(), Some(1));
+    click(&mut harness, "Apply");
+    assert!(!harness.state().crash3.has_dialog());
+    assert_eq!(
+        history(&harness),
+        ["Complete everything (108%, matching times, skip scenes)"]
+    );
+    assert_eq!(doc(&harness).current().totals().percent(), 108);
+    assert!(serious_diagnostics(&harness).is_empty());
+    // One step.
+    press(&mut harness, Modifiers::COMMAND, Key::Z);
+    assert_eq!(doc(&harness).current().totals().percent(), 19);
+}
+
+#[test]
+fn story_up_to_warp_room_3_with_gems() {
+    let mut harness = tall_harness(opening(repo_file("saves/initial_game.sav")));
+    open_preset(&mut harness, "Story up to warp room…");
+    // A new game starts at room 1; pick room 3.
+    harness.get_by_label("Story up to warp room 1");
+    harness
+        .query_all_by_label("3")
+        .find(|n| n.accesskit_node().role() == Role::RadioButton)
+        .expect("the room 3 option")
+        .click();
+    harness.run_steps(4);
+    harness.get_by_label("Story up to warp room 3");
+    click(&mut harness, "Also their gems (clear, second and colored)");
+    harness.run_steps(2);
+    assert_eq!(harness.state().crash3.preset_preview_runs(), Some(3));
+    click(&mut harness, "Apply");
+    assert_eq!(
+        history(&harness),
+        ["Story up to warp room 3 (+gems, +abilities, skip scenes)"]
+    );
+    let save = doc(&harness).current();
+    assert_eq!(save.totals().crystals, 15);
+    assert_eq!(save.totals().bosses, 3);
+    assert!(save.boss_defeated(level("ntropy")));
+    assert!(serious_diagnostics(&harness).is_empty());
+}
+
+/// The fixed time field of a preset dialog, by its text.
+fn fixed_field<'a>(harness: &'a Harness<'_, App>, text: &'a str) -> egui_kittest::Node<'a> {
+    harness
+        .query_all_by_value(text)
+        .find(|n| n.accesskit_node().role() == Role::TextInput)
+        .expect("the fixed time field")
+}
+
+#[test]
+fn a_fixed_time_that_does_not_parse_disables_apply() {
+    let mut harness = tall_harness(opening(repo_file("saves/0019.sav")));
+    open_preset(&mut harness, "All relics at a tier…");
+    click(&mut harness, "Write this time on every level:");
+    harness.run_steps(2);
+    assert!(!harness.get_by_label("Apply").accesskit_node().is_disabled());
+    fixed_field(&harness, "1:00.00").focus();
+    harness.run_steps(1);
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    fixed_field(&harness, "1:00.00").type_text("1:7x");
+    harness.run_steps(3);
+    assert!(harness.get_by_label("Apply").accesskit_node().is_disabled());
+    // A valid time enables it again, and the label carries it.
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    fixed_field(&harness, "1:7x").type_text("0:59.00");
+    harness.run_steps(3);
+    click(&mut harness, "Apply");
+    assert_eq!(
+        history(&harness),
+        ["All relics at gold (only upgrades, times 0:59.00)"]
+    );
+}
+
+#[test]
+fn the_portal_glitch_fix_and_undo() {
+    let mut harness = tall_harness(opening(repo_file("test_saves/t4_crystals.sav")));
+    let glitch = |harness: &Harness<'_, App>| {
+        doc(harness)
+            .diagnostics()
+            .iter()
+            .any(|d| d.code == "portal_glitch")
+    };
+    assert!(glitch(&harness));
+    // The toolbar's badge and the overview's both open the panel.
+    assert_eq!(harness.query_all_by_label("1 warning").count(), 2);
+    harness
+        .query_all_by_label("1 warning")
+        .next()
+        .unwrap()
+        .click();
+    harness.run_steps(2);
+    assert!(harness.state().crash3.diagnostics_open());
+    click(&mut harness, "Fix: Defeat N. Gin");
+    assert!(!glitch(&harness));
+    assert_eq!(history(&harness), ["Defeat N. Gin"]);
+    // The panel stays open, and the undo shortcut works beside it.
+    press(&mut harness, Modifiers::COMMAND, Key::Z);
+    assert!(glitch(&harness));
+    assert!(harness.state().crash3.diagnostics_open());
+}
+
+#[test]
+fn show_selects_the_level_of_a_diagnostic() {
+    let mut harness = tall_harness(app(Options {
+        view: Some(View::Diagnostics),
+        ..opening_options("test_saves/t1_relics.sav")
+    }));
+    let level = doc(&harness)
+        .diagnostics()
+        .iter()
+        .find_map(|d| d.level)
+        .expect("a diagnostic about a level");
+    click(&mut harness, &format!("Show {}", level.name()));
+    assert_eq!(harness.state().selected, Some(level));
+    assert!(
+        harness
+            .get_by_label(&format!("Show {}", level.name()))
+            .accesskit_node()
+            .is_disabled(),
+        "already shown"
+    );
+}
+
+/// Lives 41 → 42, Deep Trouble's crystal and Speed Shoes on 0019, then
+/// Save: the review lists the three rows and the recomputed totals, and
+/// confirming writes the file with a backup.
+#[test]
+fn the_save_review_of_a_session_on_0019() {
+    use nsane::crash3::Ability;
+    let path = scratch_copy("saves/0019.sav", "review");
+    let dir = path.parent().unwrap().to_owned();
+    let mut harness = tall_harness(opening(path.clone()));
+    type_lives(&mut harness, "42");
+    click(&mut harness, "Deep Trouble: crystal");
+    let edit = Edit::SetAbility {
+        ability: Ability::SpeedShoes,
+        on: true,
+    };
+    harness.state_mut().run(
+        &Context::default(),
+        vec![Action::Apply {
+            label: "Speed Shoes: on".into(),
+            edits: vec![edit],
+        }],
+    );
+    harness.run_steps(2);
+
+    press(&mut harness, Modifiers::COMMAND, Key::S);
+    let Some(Dialog::Review { review, then, .. }) = &harness.state().dialog else {
+        panic!("the review is shown");
+    };
+    assert_eq!(*review, crate::games::crash3::SaveReview::of(doc(&harness)));
+    assert_eq!(*then, None);
+    assert_eq!(review.rows.len(), 3);
+    harness.run_steps(4);
+    harness.get_by_label("• Deep Trouble: + crystal; entered, completions 0 → 1");
+    harness.get_by_label("• Speed Shoes: off → on");
+    harness.get_by_label("• Lives: 41 → 42");
+    harness.get_by_label("• Percentage: 19% → 20%");
+    harness.get_by_label("• Crystals: 10 → 11");
+    harness.get_by_label("No warnings.");
+    harness.get_by_label_contains("The file it replaces is kept as ");
+    assert!(backups(&dir).is_empty(), "nothing written yet");
+
+    // Cancel writes nothing.
+    click(&mut harness, "Cancel");
+    assert!(harness.state().dialog.is_none());
+    assert!(doc(&harness).is_dirty());
+    assert!(backups(&dir).is_empty());
+
+    press(&mut harness, Modifiers::COMMAND, Key::S);
+    confirm_review(&mut harness);
+    assert!(!doc(&harness).is_dirty());
+    assert_eq!(fs::read(&path).unwrap(), doc(&harness).to_bytes().unwrap());
+    assert_eq!(backups(&dir).len(), 1);
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn the_review_can_be_turned_off_and_on() {
+    let path = scratch_copy("saves/0018.sav", "no-review");
+    let dir = path.parent().unwrap().to_owned();
+    let mut harness = harness(opening(path.clone()));
+    // Nothing to review: Save writes at once.
+    press(&mut harness, Modifiers::COMMAND, Key::S);
+    assert!(harness.state().dialog.is_none());
+    assert_eq!(backups(&dir).len(), 1);
+
+    type_lives(&mut harness, "42");
+    press(&mut harness, Modifiers::COMMAND, Key::S);
+    harness.run_steps(4);
+    click(&mut harness, "Don't show this again");
+    assert!(!harness.state().prefs.skip_save_review, "only once saved");
+    confirm_review(&mut harness);
+    assert!(harness.state().prefs.skip_save_review);
+
+    type_lives(&mut harness, "43");
+    press(&mut harness, Modifiers::COMMAND, Key::S);
+    assert!(harness.state().dialog.is_none(), "saved without the review");
+    assert!(!doc(&harness).is_dirty());
+
+    // The settings menu turns it back on.
+    click(&mut harness, "⚙");
+    click(&mut harness, "Review the changes before saving");
+    assert!(!harness.state().prefs.skip_save_review);
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn the_unsaved_question_saves_through_the_review_then_opens() {
+    let path = scratch_copy("saves/0018.sav", "unsaved-review");
+    let other = repo_file("saves/0019.sav");
+    let mut harness = harness(opening(path.clone()));
+    type_lives(&mut harness, "42");
+    harness
+        .state_mut()
+        .run(&Context::default(), vec![Action::OpenPath(other.clone())]);
+    harness.run_steps(2);
+    // The question's Save, after the toolbar's.
+    harness.query_all_by_label("Save").last().unwrap().click();
+    harness.run_steps(2);
+    let Some(Dialog::Review { then, .. }) = &harness.state().dialog else {
+        panic!("the review is shown");
+    };
+    assert_eq!(*then, Some(Then::OpenPath(other)));
+    confirm_review(&mut harness);
+    assert_eq!(
+        fs::read(&path).unwrap(),
+        fs::read(repo_file("test_saves/lives42.sav")).unwrap()
+    );
+    assert_eq!(doc(&harness).file_name(), Some("0019.sav"));
+    fs::remove_dir_all(path.parent().unwrap()).unwrap();
+}
+
+#[test]
+fn an_error_diagnostic_disables_save() {
+    let mut harness = harness(opening(repo_file("saves/0018.sav")));
+    let edits: Vec<_> = (0..40)
+        .map(|i| Edit::RawFlagSet {
+            key: format!("{i}_{}", "x".repeat(4000)),
+        })
+        .collect();
+    harness.state_mut().apply("big".into(), edits);
+    harness.run_steps(2);
+    let reason = harness.state().save_blocked().expect("blocked");
+    assert!(reason.contains("a Switch save holds 153,600"), "{reason}");
+    for label in ["Save", "Save as"] {
+        assert!(harness.get_by_label(label).accesskit_node().is_disabled());
+    }
+    // In the toolbar and in the overview.
+    assert_eq!(harness.query_all_by_label("1 error").count(), 2);
+    // The shortcut explains instead of writing.
+    press(&mut harness, Modifiers::COMMAND, Key::S);
+    let Some(Dialog::Error { title, message }) = &harness.state().dialog else {
+        panic!("an error dialog");
+    };
+    assert_eq!(title, "Can't save");
+    assert_eq!(*message, reason);
+    // Undo makes it fit again.
+    click(&mut harness, "OK");
+    press(&mut harness, Modifiers::COMMAND, Key::Z);
+    assert!(harness.state().save_blocked().is_none());
+    assert!(!harness.get_by_label("Save").accesskit_node().is_disabled());
+}
+
+#[test]
+fn the_history_goes_back_and_forward() {
+    let mut harness = harness(opening(repo_file("saves/0018.sav")));
+    assert!(
+        harness
+            .get_by_label("History")
+            .accesskit_node()
+            .is_disabled()
+    );
+    type_lives(&mut harness, "42");
+    type_lives(&mut harness, "43");
+    type_lives(&mut harness, "44");
+    click(&mut harness, "History");
+    click(&mut harness, "Opened 0018.sav");
+    assert_eq!(lives(&harness), 5);
+    assert!(history(&harness).is_empty());
+    click(&mut harness, "History");
+    click(&mut harness, "Lives: 43");
+    assert_eq!(lives(&harness), 43);
+    assert_eq!(history(&harness), ["Lives: 42", "Lives: 43"]);
+    click(&mut harness, "History");
+    click(&mut harness, "Lives: 42");
+    assert_eq!(lives(&harness), 42);
+}
+
+#[test]
+fn the_preset_diagnostics_and_review_views() {
+    let options = |rel: &str, view| Options {
+        view: Some(view),
+        ..opening_options(rel)
+    };
+    let mut harness = harness(app(options("saves/0019.sav", View::PresetAll)));
+    harness.run_steps(4);
+    harness.get_by_label("Complete everything (108%)");
+    let mut harness = self::harness(app(options("saves/0019.sav", View::PresetStory3)));
+    harness.run_steps(4);
+    harness.get_by_label("Story up to warp room 3");
+    let harness = self::harness(app(options(
+        "test_saves/t4_crystals.sav",
+        View::Diagnostics,
+    )));
+    assert!(harness.state().crash3.diagnostics_open());
+    let harness = self::harness(app(options("saves/0019.sav", View::SaveReview)));
+    assert!(matches!(
+        harness.state().dialog,
+        Some(Dialog::Review { .. })
+    ));
+}
+
+#[test]
+fn edits_from_a_json_file_are_applied_at_start() {
+    let dir = temp_dir("apply");
+    let edits = dir.join("edits.json");
+    fs::write(
+        &edits,
+        r#"[{"op": "set_lives", "count": 42},
+            {"op": "set_crystal", "level": "deeptrouble", "on": true}]"#,
+    )
+    .unwrap();
+    let harness = harness(app(Options {
+        apply: Some(edits.clone()),
+        ..opening_options("saves/0019.sav")
+    }));
+    assert_eq!(history(&harness), ["Lives: 42", "Deep Trouble: crystal on"]);
+
+    fs::write(&edits, r#"[{"op": "set_lives"}]"#).unwrap();
+    let harness = self::harness(app(Options {
+        apply: Some(edits),
+        ..opening_options("saves/0019.sav")
+    }));
+    assert!(matches!(harness.state().dialog, Some(Dialog::Error { .. })));
+    assert!(history(&harness).is_empty());
+    fs::remove_dir_all(dir).unwrap();
 }

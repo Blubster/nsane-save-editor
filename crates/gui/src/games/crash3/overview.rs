@@ -309,21 +309,14 @@ pub fn story(ui: &mut Ui, doc: &Document) {
     }
 }
 
-/// Counts by severity, then the messages.
-pub fn diagnostics(ui: &mut Ui, doc: &Document) {
+/// Counts by severity, which open the diagnostics panel, then the
+/// messages.
+pub fn diagnostics(ui: &mut Ui, doc: &Document, open_panel: &mut bool) {
     let all = doc.diagnostics();
     ui.horizontal(|ui| {
         ui.label(RichText::new("Diagnostics").strong());
-        for (severity, icon, name) in [
-            (Severity::Error, Icon::Error, "errors"),
-            (Severity::Warning, Icon::Warning, "warnings"),
-            (Severity::Info, Icon::Info, "notes"),
-        ] {
-            let count = all.iter().filter(|d| d.severity == severity).count();
-            if count > 0 {
-                static_icon(ui, icon, theme::ICON_SMALL).on_hover_text(format!("{count} {name}"));
-                ui.label(count.to_string());
-            }
+        if super::diagnostics_ui::badges(ui, all) {
+            *open_panel = true;
         }
     });
     if all.is_empty() {
@@ -336,15 +329,21 @@ pub fn diagnostics(ui: &mut Ui, doc: &Document) {
         .default_open(serious)
         .show(ui, |ui| {
             for d in all {
-                let icon = match d.severity {
-                    Severity::Error => Icon::Error,
-                    Severity::Warning => Icon::Warning,
-                    Severity::Info => Icon::Info,
-                };
                 ui.horizontal(|ui| {
-                    static_icon(ui, icon, theme::ICON_SMALL);
+                    static_icon(
+                        ui,
+                        super::preview::severity_icon(d.severity),
+                        theme::ICON_SMALL,
+                    );
                     ui.add(egui::Label::new(d.message.as_str()).wrap());
                 });
             }
         });
+    if ui
+        .button("Fix or show…")
+        .on_hover_text("Open the diagnostics panel, with a fix for each message that has one")
+        .clicked()
+    {
+        *open_panel = true;
+    }
 }

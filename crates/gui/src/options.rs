@@ -20,16 +20,28 @@ pub enum View {
     UnlockDialog,
     /// The Progress tab scrolled to the story scenes.
     Cutscenes,
+    /// The dialog of the "Complete everything" preset.
+    PresetAll,
+    /// The dialog of the "Story up to warp room" preset, at room 3.
+    PresetStory3,
+    /// The diagnostics panel.
+    Diagnostics,
+    /// The review shown before saving.
+    SaveReview,
 }
 
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))] // set from the command line
 impl View {
-    pub const ALL: [View; 5] = [
+    pub const ALL: [View; 9] = [
         View::Unsaved,
         View::InvalidTime,
         View::Progress,
         View::UnlockDialog,
         View::Cutscenes,
+        View::PresetAll,
+        View::PresetStory3,
+        View::Diagnostics,
+        View::SaveReview,
     ];
 
     pub fn name(self) -> &'static str {
@@ -39,6 +51,10 @@ impl View {
             View::Progress => "progress",
             View::UnlockDialog => "unlock-dialog",
             View::Cutscenes => "cutscenes",
+            View::PresetAll => "preset-108",
+            View::PresetStory3 => "preset-story3",
+            View::Diagnostics => "diagnostics",
+            View::SaveReview => "save-review",
         }
     }
 
@@ -63,6 +79,9 @@ pub struct Options {
     /// A save to open at start.
     #[cfg(not(target_arch = "wasm32"))]
     pub open: Option<PathBuf>,
+    /// Edits to apply to it at start: a JSON list of edit ops.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub apply: Option<PathBuf>,
     /// The level selected at start.
     pub select: Option<LevelId>,
     pub view: Option<View>,
@@ -84,13 +103,17 @@ pub const USAGE: &str = "\
 usage: nsane-save-editor [options]
 
   --open FILE.sav        open a save
+  --apply EDITS.json     apply edits to it at start, one undo step each: a
+                         JSON list of edit ops, as in tests/golden
   --select LEVEL         select a level by its key, e.g. toadvillage
   --view NAME            set up a state at start: unsaved (the question
                          before closing), invalid-time (a refused time
                          typed for the selected level), progress (the
                          Progress tab), unlock-dialog (its dialog for the
                          first locked warp room), cutscenes (its story
-                         scenes)
+                         scenes), preset-108 and preset-story3 (preset
+                         dialogs), diagnostics (the diagnostics panel),
+                         save-review (the review shown before saving)
   --icon-gallery         show every icon in every state and size
   --theme light|dark     force a theme instead of following the system
   --size WxH             inner window size in points, e.g. 1280x800
@@ -108,6 +131,7 @@ impl Options {
             let mut value = |name: &str| args.next().ok_or(format!("{name} needs a value"));
             match arg.as_str() {
                 "--open" => options.open = Some(value("--open")?.into()),
+                "--apply" => options.apply = Some(value("--apply")?.into()),
                 "--select" => {
                     let key = value("--select")?;
                     options.select =
@@ -194,6 +218,8 @@ mod tests {
         let o = parse(&[
             "--open",
             "saves/0019.sav",
+            "--apply",
+            "edits.json",
             "--select",
             "toadvillage",
             "--view",
@@ -203,6 +229,7 @@ mod tests {
         ])
         .unwrap();
         assert_eq!(o.open, Some("saves/0019.sav".into()));
+        assert_eq!(o.apply, Some("edits.json".into()));
         assert_eq!(o.select, LevelId::from_key("toadvillage"));
         assert_eq!(o.view, Some(View::Unsaved));
         assert_eq!(o.screenshots.len(), 1);

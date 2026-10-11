@@ -1,11 +1,19 @@
 //! Crash Bandicoot 3: Warped: the overview, the central area (the warp room
 //! grid, or the story progress) and the level details.
 
+mod diagnostics_ui;
 mod level_panel;
 pub mod level_row;
 mod overview;
+mod presets_ui;
+mod preview;
 mod progress;
+mod review;
 mod rooms;
+
+pub use diagnostics_ui::save_blocker;
+pub use presets_ui::Preset;
+pub use review::SaveReview;
 
 use nsane::Document;
 use nsane::crash3::LevelId;
@@ -49,21 +57,71 @@ pub struct Crash3Ui {
     panel: level_panel::LevelPanel,
     tab: Tab,
     progress: progress::Progress,
+    presets: presets_ui::Presets,
+    diagnostics: diagnostics_ui::DiagnosticsPanel,
 }
 
 impl Crash3Ui {
     /// Drops values being edited and open questions, when the document
-    /// changes under them (undo, redo, another file). The tab stays.
+    /// changes under them (undo, redo, another file). The tab and the
+    /// diagnostics panel stay.
     pub fn reset(&mut self) {
         *self = Self {
             tab: self.tab,
+            diagnostics: std::mem::take(&mut self.diagnostics),
             ..Self::default()
         };
     }
 
     /// Whether a question of this tab is open: shortcuts wait meanwhile.
     pub fn has_dialog(&self) -> bool {
-        self.panel.has_dialog() || self.progress.has_dialog()
+        self.panel.has_dialog() || self.progress.has_dialog() || self.presets.has_dialog()
+    }
+
+    /// The entries of the Presets menu.
+    pub fn presets_menu(&mut self, ui: &mut egui::Ui, doc: &Document) {
+        self.presets.menu(ui, doc);
+    }
+
+    /// The dialog of `preset` (`--view preset-108`, `--view preset-story3`).
+    pub fn open_preset(&mut self, preset: Preset) {
+        self.presets.open(preset);
+    }
+
+    pub fn open_diagnostics(&mut self) {
+        self.diagnostics.open = true;
+    }
+
+    #[cfg(test)]
+    pub fn diagnostics_open(&self) -> bool {
+        self.diagnostics.open
+    }
+
+    /// How many previews the open preset dialog has computed.
+    #[cfg(test)]
+    pub fn preset_preview_runs(&self) -> Option<usize> {
+        self.presets.preview_runs()
+    }
+
+    /// A badge per diagnostic severity, for the toolbar; a click opens the
+    /// diagnostics panel.
+    pub fn diagnostics_badges(&mut self, ui: &mut egui::Ui, doc: &Document) {
+        if diagnostics_ui::badges(ui, doc.diagnostics()) {
+            self.diagnostics.open = true;
+        }
+    }
+
+    /// The windows over the editor: the preset dialog and the diagnostics
+    /// panel.
+    pub fn windows(
+        &mut self,
+        ctx: &egui::Context,
+        doc: &Document,
+        selected: &mut Option<LevelId>,
+        actions: &mut Vec<Action>,
+    ) {
+        self.diagnostics.show(ctx, doc, selected, actions);
+        self.presets.dialog(ctx, doc, actions);
     }
 
     /// Shows the Progress tab (`--view progress`).
@@ -122,7 +180,7 @@ impl Crash3Ui {
                 ui.separator();
                 overview::story(ui, doc);
                 ui.separator();
-                overview::diagnostics(ui, doc);
+                overview::diagnostics(ui, doc, &mut self.diagnostics.open);
             });
     }
 

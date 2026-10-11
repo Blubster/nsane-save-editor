@@ -15,6 +15,12 @@ Open a save with the **Open** button, by dropping the file onto the window, or w
 
 The Crash 3 tab shows the overall progress on the left (percentage, totals, lives, the bonus gem, the secret warp room's relic thresholds, the story and any problems found in the save) and the six warp rooms in the middle. In a room, each level is a row of icons: crystal, clear gem, second gem and colored gem, where the level has them, then the relic and the best time trial time. Click an icon to add or remove it. A click on the relic moves to the next tier (none, sapphire, gold, platinum); a right-click picks one. Every click is one step that Ctrl+Z undoes. Hover over an icon to see what it is and what a click does. A click on a level's name selects it.
 
+The **Presets** menu applies a common goal in one step: complete everything (108%), the story up to a warp room, every relic at a tier, every super power on or off, every story scene seen or not. Each opens a dialog with its options and a preview of the changes, the resulting totals and any new diagnostics. **History**, next to undo and redo, lists every step; a click goes back or forward to one.
+
+The badges in the toolbar and the overview count the diagnostics (errors, warnings, notes). A click opens the diagnostics panel: **Fix** applies the suggested change as one step, **Show** selects the level concerned. While a Switch save is too large for its file (an error), Save is disabled.
+
+Saving unsaved changes first shows a review: every change since the file was opened, the totals recomputed when writing, the warnings left, and the backup that will be made. "Don't show this again" turns it off; the settings menu (⚙) turns it back on.
+
 ### In a browser
 
 ```sh
@@ -27,7 +33,7 @@ The file never leaves the browser. Open a save with **Open** or by dropping it o
 
 ### Settings
 
-The app remembers the theme picked with the toolbar toggle, which side panels are shown on a narrow window and, on the desktop, the folder of the last file opened or saved. They are kept in:
+The app remembers the theme picked with the toolbar toggle, which side panels are shown on a narrow window, whether the review is shown before saving and, on the desktop, the folder of the last file opened or saved. They are kept in:
 
 | Platform | Place |
 |---|---|
@@ -58,8 +64,9 @@ The file dialogs go through the desktop portal (`xdg-desktop-portal`) over D-Bus
 | Option | Effect |
 |---|---|
 | `--open FILE.sav` | Open a save at start. |
+| `--apply EDITS.json` | Apply edits to it at start, one undo step each: a JSON list of edit ops, as in `tests/golden/scenarios.json`. |
 | `--select LEVEL` | Select a level by its key (`toadvillage`, `deeptrouble`, …). |
-| `--view NAME` | Set up a state at start: `unsaved` (the question asked before unsaved changes are lost), `invalid-time` (a refused time typed for the selected level), `progress` (the Progress tab), `unlock-dialog` (its dialog for the first locked warp room), `cutscenes` (the Progress tab scrolled to the story scenes). |
+| `--view NAME` | Set up a state at start: `unsaved` (the question asked before unsaved changes are lost), `invalid-time` (a refused time typed for the selected level), `progress` (the Progress tab), `unlock-dialog` (its dialog for the first locked warp room), `cutscenes` (the Progress tab scrolled to the story scenes), `preset-108` and `preset-story3` (the dialogs of those presets), `diagnostics` (the diagnostics panel), `save-review` (the review shown before saving; nothing is written). |
 | `--theme light\|dark` | Force a theme instead of following the system. |
 | `--size WxH` | Inner window size in points, for example `1280x800`. |
 | `--maximized` | Start maximized. |

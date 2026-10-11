@@ -9,15 +9,15 @@
 use egui::{
     Align, Button, Grid, Id, Key, Layout, Modal, RichText, ScrollArea, Ui, WidgetInfo, WidgetType,
 };
+use nsane::Document;
 use nsane::crash3::presets::{ReachRelicCount, TimePolicy, all_abilities, all_cutscenes};
 use nsane::crash3::tables::SecretRoomLevel;
 use nsane::crash3::{
-    ABILITIES, BOSSES, CUTSCENES, Crash3Save, Edit, LevelId, Relic, SECRET_ROOM, Severity, presets,
+    ABILITIES, BOSSES, CUTSCENES, Crash3Save, Edit, LevelId, Relic, SECRET_ROOM, presets,
 };
-use nsane::diff::ChangeGroup;
-use nsane::{Document, Preview};
 
 use super::level_row::{self, push};
+use super::preview::{self, Previewed, plural};
 use super::rooms;
 use crate::app::{Action, static_icon};
 use crate::icons::{self, Boss, Icon};
@@ -27,8 +27,6 @@ use crate::theme::{self, SPACING};
 const DIALOG_WIDTH: f32 = 460.0;
 /// The scene name column: fits "Cortex Post NTropy Fight".
 const SCENE_NAME_WIDTH: f32 = 170.0;
-/// The tallest the change list of a preview gets before it scrolls.
-const PREVIEW_HEIGHT: f32 = 240.0;
 
 /// An action on many things, waiting in its dialog for confirmation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -107,21 +105,10 @@ impl Bulk {
     }
 }
 
-/// A preview, and what it was computed for.
-#[derive(Debug)]
-struct Computed {
-    generation: u64,
-    bulk: Bulk,
-    edits: Vec<Edit>,
-    result: Result<Preview, String>,
-}
-
 #[derive(Debug)]
 struct BulkDialog {
     bulk: Bulk,
-    /// `Document::preview` clones the save, so it runs again only when the
-    /// options or the document change, not on every frame.
-    computed: Option<Computed>,
+    computed: Option<Previewed<Bulk>>,
     /// How many previews were computed, for the tests.
     #[cfg(test)]
     runs: usize,
@@ -200,25 +187,15 @@ impl Progress {
         let Some(dialog) = &mut self.dialog else {
             return;
         };
-        let generation = doc.generation();
-        let stale = dialog
-            .computed
-            .as_ref()
-            .is_none_or(|c| c.generation != generation || c.bulk != dialog.bulk);
-        if stale {
-            let edits = dialog.bulk.edits(doc.current());
-            let result = doc.preview(&edits).map_err(|e| e.to_string());
-            dialog.computed = Some(Computed {
-                generation,
-                bulk: dialog.bulk,
-                edits,
-                result,
-            });
-            #[cfg(test)]
-            {
-                dialog.runs += 1;
-            }
+        let ran = Previewed::refresh(&mut dialog.computed, doc, &dialog.bulk, |save| {
+            Ok(dialog.bulk.edits(save))
+        });
+        #[cfg(test)]
+        {
+            dialog.runs += usize::from(ran);
         }
+        #[cfg(not(test))]
+        let _ = ran;
         let Some(computed) = &dialog.computed else {
             return;
         };
@@ -241,7 +218,10 @@ impl Progress {
                 } => relic_options(ui, doc, *number, *count, options),
             }
             ui.separator();
-            let can_apply = preview(ui, doc, computed);
+            let can_apply = preview::show(ui, doc, computed);
+            if let Bulk::Unlock { .. } = computed.key {
+                note(ui, "Each defeated boss counts 1% towards the percentage.");
+            }
             ui.add_space(SPACING);
             ui.horizontal(|ui| {
                 if ui.add_enabled(can_apply, Button::new("Apply")).clicked() {
@@ -258,7 +238,7 @@ impl Progress {
             ui.ctx().request_repaint();
         } else if apply {
             actions.push(Action::Apply {
-                label: computed.bulk.label(doc.current(), &computed.edits),
+                label: computed.key.label(doc.current(), &computed.edits),
                 edits: computed.edits.clone(),
             });
             close = true;
@@ -267,10 +247,6 @@ impl Progress {
             self.dialog = None;
         }
     }
-}
-
-fn plural(n: usize, one: &str, many: &str) -> String {
-    format!("{n} {}", if n == 1 { one } else { many })
 }
 
 /// "a, b and c".
@@ -518,99 +494,6 @@ fn relic_options(
         ui.radio_value(&mut options.times, TimePolicy::Keep, "Keep the times");
         ui.radio_value(&mut options.times, TimePolicy::Clear, "Clear the times");
     });
-}
-
-// ---------------------------------------------------------------- preview
-
-/// The changes of a preview grouped, the resulting percentage and the
-/// diagnostics. Returns whether there is something to apply.
-fn preview(ui: &mut Ui, doc: &Document, computed: &Computed) -> bool {
-    ui.strong("Changes");
-    let preview = match &computed.result {
-        Ok(p) => p,
-        Err(e) => {
-            let pal = theme::palette(ui.visuals().dark_mode);
-            ui.horizontal(|ui| {
-                static_icon(ui, Icon::Error, theme::ICON_SMALL);
-                ui.colored_label(pal.error.base, format!("This can't be applied: {e}"));
-            });
-            return false;
-        }
-    };
-    if preview.changes.is_empty() {
-        ui.weak("Nothing to change.");
-        return false;
-    }
-    let mut groups: Vec<ChangeGroup> = Vec::new();
-    for row in &preview.rows {
-        if !groups.contains(&row.group) {
-            groups.push(row.group);
-        }
-    }
-    ScrollArea::vertical()
-        .max_height(PREVIEW_HEIGHT)
-        .auto_shrink([false, true])
-        .show(ui, |ui| {
-            for group in groups {
-                ui.label(RichText::new(group.name()).underline());
-                for row in preview.rows.iter().filter(|r| r.group == group) {
-                    let text = match row.text() {
-                        details if details.is_empty() => row.title.clone(),
-                        details => format!("{}: {details}", row.title),
-                    };
-                    ui.add(egui::Label::new(format!("• {text}")).wrap());
-                }
-            }
-        });
-
-    ui.add_space(SPACING / 2.0);
-    let before = doc.current().totals();
-    let after = &preview.totals;
-    ui.label(format!(
-        "Percentage: {}% → {}%",
-        before.percent(),
-        after.percent()
-    ));
-    match computed.bulk {
-        Bulk::Unlock { .. } => note(ui, "Each defeated boss counts 1% towards the percentage."),
-        Bulk::Relics { .. } => {
-            ui.label(format!("Relics: {} → {}", before.relics(), after.relics()));
-        }
-    }
-
-    let now = doc.diagnostics();
-    let new: Vec<_> = preview
-        .diagnostics
-        .iter()
-        .filter(|d| !now.contains(d))
-        .collect();
-    let resolved = now
-        .iter()
-        .filter(|d| !preview.diagnostics.contains(d))
-        .count();
-    if new.is_empty() {
-        ui.weak("No new diagnostics.");
-    } else {
-        ui.label("New diagnostics:");
-        for d in new {
-            let icon = match d.severity {
-                Severity::Error => Icon::Error,
-                Severity::Warning => Icon::Warning,
-                Severity::Info => Icon::Info,
-            };
-            ui.horizontal(|ui| {
-                static_icon(ui, icon, theme::ICON_SMALL);
-                ui.add(egui::Label::new(d.message.as_str()).wrap());
-            });
-        }
-    }
-    if resolved > 0 {
-        ui.weak(format!(
-            "Resolves {}.",
-            plural(resolved, "diagnostic", "diagnostics")
-        ));
-    }
-    true
 }
 
 // -------------------------------------------------------------- abilities

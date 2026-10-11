@@ -15,7 +15,7 @@ use nsane::crash3::{Edit, LevelId};
 use nsane::{Document, OpenError};
 
 use crate::gallery::Gallery;
-use crate::games::crash3::Crash3Ui;
+use crate::games::crash3::{Crash3Ui, Preset, SaveReview, save_blocker};
 use crate::icons::{self, Icon, IconState};
 use crate::options::{Options, View};
 use crate::prefs::Prefs;
@@ -89,10 +89,42 @@ enum Then {
     Close,
 }
 
+/// Where a save goes once its review is confirmed.
+#[derive(Debug, Clone, PartialEq)]
+enum Target {
+    /// A file, and the time its backup is named after.
+    #[cfg(not(target_arch = "wasm32"))]
+    File {
+        path: PathBuf,
+        now: (i32, u8, u8, u8, u8, u8),
+    },
+    /// A browser download under this name.
+    #[cfg(target_arch = "wasm32")]
+    Download(String),
+}
+
+impl Target {
+    #[cfg(not(target_arch = "wasm32"))]
+    fn file(path: PathBuf) -> Self {
+        Target::File {
+            path,
+            now: crate::io::native::local_now(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 enum Dialog {
     /// Save, discard or cancel, before `Then`.
     Unsaved(Then),
+    /// The changes, before writing them to `target`. `then` runs once
+    /// written.
+    Review {
+        review: SaveReview,
+        target: Target,
+        then: Option<Then>,
+        dont_show: bool,
+    },
     Error {
         title: String,
         message: String,
@@ -258,6 +290,10 @@ impl App {
         if let Some(path) = options.open {
             app.open_path(path);
         }
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(path) = &options.apply {
+            app.apply_file(path);
+        }
         match options.view {
             Some(View::Unsaved) => app.dialog = Some(Dialog::Unsaved(Then::Open)),
             Some(View::InvalidTime) => {
@@ -272,9 +308,61 @@ impl App {
                 }
             }
             Some(View::Cutscenes) => app.crash3.scroll_to_scenes(),
+            Some(View::PresetAll | View::PresetStory3) => {
+                if let Some(file) = &app.file {
+                    let preset = match options.view {
+                        Some(View::PresetAll) => Preset::menu(file.doc.current())[0],
+                        _ => Preset::StoryUpTo {
+                            room: 3,
+                            options: Default::default(),
+                        },
+                    };
+                    app.crash3.open_preset(preset);
+                }
+            }
+            Some(View::Diagnostics) => app.crash3.open_diagnostics(),
+            Some(View::SaveReview) => {
+                if let Some(file) = &app.file {
+                    #[cfg(not(target_arch = "wasm32"))]
+                    let target = Target::file(
+                        file.path
+                            .clone()
+                            .unwrap_or_else(|| PathBuf::from(file.name())),
+                    );
+                    #[cfg(target_arch = "wasm32")]
+                    let target = Target::Download(file.name().to_owned());
+                    app.dialog = Some(app.review_dialog(target, None));
+                }
+            }
             None => {}
         }
         app
+    }
+
+    /// Applies the edit ops of a JSON file, one undo step each.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn apply_file(&mut self, path: &Path) {
+        let edits = std::fs::read_to_string(path)
+            .map_err(|e| e.to_string())
+            .and_then(|text| {
+                serde_json::from_str::<Vec<serde_json::Value>>(&text).map_err(|e| e.to_string())
+            })
+            .and_then(|ops| {
+                ops.iter()
+                    .map(|op| Edit::from_json(op).map_err(|e| e.to_string()))
+                    .collect::<Result<Vec<_>, _>>()
+            });
+        match edits {
+            Ok(edits) => {
+                for edit in edits {
+                    if let Some(file) = &self.file {
+                        let label = edit.describe(file.doc.current());
+                        self.apply(label, vec![edit]);
+                    }
+                }
+            }
+            Err(e) => self.error(format!("Can't apply {}", path.display()), e),
+        }
     }
 
     fn is_dirty(&self) -> bool {
@@ -376,32 +464,45 @@ impl App {
         );
     }
 
+    /// Why the document can't be written now: the first error diagnostic.
+    fn save_blocked(&self) -> Option<String> {
+        let file = self.file.as_ref()?;
+        save_blocker(&file.doc).map(|d| d.message.clone())
+    }
+
     /// Saves to the document's file, or asks where when it has none. In the
-    /// browser, downloads it under its name. Returns whether it was written.
-    fn save(&mut self) -> bool {
+    /// browser, downloads it under its name. Unsaved changes are reviewed
+    /// first; `then` runs once the file is written.
+    fn save(&mut self, ctx: &Context, then: Option<Then>) {
+        let Some(file) = &self.file else {
+            return;
+        };
+        if let Some(reason) = self.save_blocked() {
+            self.error("Can't save", reason);
+            return;
+        }
         #[cfg(not(target_arch = "wasm32"))]
-        {
-            if let Some(path) = self.file.as_ref().and_then(|f| f.path.clone()) {
-                return self.save_to(path);
-            }
-            self.save_as()
+        match file.path.clone() {
+            Some(path) => self.review_or_write(ctx, Target::file(path), then),
+            None => self.save_as(ctx, then),
         }
         #[cfg(target_arch = "wasm32")]
         {
-            let Some(file) = &self.file else {
-                return false;
-            };
             let name = file.name().to_owned();
-            self.download(name)
+            self.review_or_write(ctx, Target::Download(name), then);
         }
     }
 
     /// Asks where to save, then saves. In the browser, asks for the name to
-    /// download under. Returns whether the file was written.
-    fn save_as(&mut self) -> bool {
+    /// download under.
+    fn save_as(&mut self, ctx: &Context, then: Option<Then>) {
         let Some(file) = &self.file else {
-            return false;
+            return;
         };
+        if let Some(reason) = self.save_blocked() {
+            self.error("Can't save", reason);
+            return;
+        }
         #[cfg(not(target_arch = "wasm32"))]
         {
             let suggested = match (&file.path, &self.prefs.last_dir) {
@@ -410,18 +511,56 @@ impl App {
                 (None, None) => PathBuf::from(file.name()),
             };
             match crate::io::native::pick_save(Some(&suggested)) {
-                Ok(Some(path)) => self.save_to(path),
-                Ok(None) => false,
-                Err(_) => {
-                    self.dialog_unavailable();
-                    false
-                }
+                Ok(Some(path)) => self.review_or_write(ctx, Target::file(path), then),
+                Ok(None) => {}
+                Err(_) => self.dialog_unavailable(),
             }
         }
         #[cfg(target_arch = "wasm32")]
         {
+            // The browser always has a name to save under: see `save`.
+            let _ = (ctx, then);
             self.dialog = Some(Dialog::DownloadAs(file.name().to_owned()));
-            false
+        }
+    }
+
+    fn review_dialog(&self, target: Target, then: Option<Then>) -> Dialog {
+        let review = self
+            .file
+            .as_ref()
+            .map(|f| SaveReview::of(&f.doc))
+            .unwrap_or(SaveReview {
+                rows: Vec::new(),
+                recomputed: Vec::new(),
+                diagnostics: Vec::new(),
+            });
+        Dialog::Review {
+            review,
+            target,
+            then,
+            dont_show: false,
+        }
+    }
+
+    /// Shows the review of unsaved changes, or writes right away when there
+    /// are none or the review is turned off.
+    fn review_or_write(&mut self, ctx: &Context, target: Target, then: Option<Then>) {
+        if self.is_dirty() && !self.prefs.skip_save_review {
+            self.dialog = Some(self.review_dialog(target, then));
+        } else {
+            self.write(ctx, target, then);
+        }
+    }
+
+    fn write(&mut self, ctx: &Context, target: Target, then: Option<Then>) {
+        let written = match target {
+            #[cfg(not(target_arch = "wasm32"))]
+            Target::File { path, now } => self.save_to_at(path, now),
+            #[cfg(target_arch = "wasm32")]
+            Target::Download(name) => self.download(name),
+        };
+        if written && let Some(then) = then {
+            self.proceed(ctx, then);
         }
     }
 
@@ -452,12 +591,18 @@ impl App {
     }
 
     /// Writes the document to `path`, backing up the file it replaces.
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(test)]
     fn save_to(&mut self, path: PathBuf) -> bool {
+        self.save_to_at(path, crate::io::native::local_now())
+    }
+
+    /// Writes the document to `path`, backing up the file it replaces under
+    /// a name made from `now`.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn save_to_at(&mut self, path: PathBuf, now: (i32, u8, u8, u8, u8, u8)) -> bool {
         let Some(bytes) = self.bytes_to_write() else {
             return false;
         };
-        let now = crate::io::native::local_now();
         match crate::io::native::write_with_backup(&path, &bytes, now) {
             Ok(backup) => {
                 let mut text = format!("Saved {}", path.display());
@@ -558,16 +703,8 @@ impl App {
                 Action::OpenBytes { name, bytes } => {
                     self.guard(ctx, Then::OpenBytes { name, bytes })
                 }
-                Action::Save => {
-                    if self.file.is_some() {
-                        self.save();
-                    }
-                }
-                Action::SaveAs => {
-                    if self.file.is_some() {
-                        self.save_as();
-                    }
-                }
+                Action::Save => self.save(ctx, None),
+                Action::SaveAs => self.save_as(ctx, None),
                 Action::Undo => {
                     if let Some(file) = &mut self.file
                         && file.doc.undo()
@@ -700,15 +837,23 @@ impl App {
                     {
                         actions.push(Action::Open);
                     }
-                    if ui
-                        .add_enabled(has_file, Button::new("Save"))
+                    // An error diagnostic (a Switch save that outgrew its
+                    // file) keeps the file from being written.
+                    let blocked = self.save_blocked();
+                    let why_not = |response: egui::Response| match &blocked {
+                        Some(reason) => {
+                            response.on_disabled_hover_text(format!("Can't save: {reason}"))
+                        }
+                        None => response,
+                    };
+                    let can_save = has_file && blocked.is_none();
+                    if why_not(ui.add_enabled(can_save, Button::new("Save")))
                         .on_hover_text(tip(SAVE_TIP, &SAVE))
                         .clicked()
                     {
                         actions.push(Action::Save);
                     }
-                    if ui
-                        .add_enabled(has_file, Button::new("Save as"))
+                    if why_not(ui.add_enabled(can_save, Button::new("Save as")))
                         .on_hover_text(tip(SAVE_AS_TIP, &SAVE_AS))
                         .clicked()
                     {
@@ -716,12 +861,26 @@ impl App {
                     }
                     ui.separator();
                     self.undo_redo(ui, actions, &tip);
+                    self.history_menu(ui, actions);
+                    if let Some(file) = &self.file {
+                        ui.add_enabled_ui(self.game == Game::Crash3, |ui| {
+                            ui.menu_button("Presets", |ui| {
+                                self.crash3.presets_menu(ui, &file.doc);
+                            })
+                            .response
+                            .on_hover_text("Common goals, applied in one step after a preview");
+                        });
+                    }
                     if let Some(file) = &mut self.file {
                         ui.separator();
                         status(ui, file);
+                        if self.game == Game::Crash3 {
+                            self.crash3.diagnostics_badges(ui, &file.doc);
+                        }
                     }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         self.theme_toggle(ui);
+                        self.settings_menu(ui);
                         #[cfg(not(target_arch = "wasm32"))]
                         let debug_menu = cfg!(debug_assertions) && self.screenshot.is_none();
                         #[cfg(target_arch = "wasm32")]
@@ -765,6 +924,78 @@ impl App {
         if response.clicked() {
             actions.push(Action::Redo);
         }
+    }
+
+    /// The steps undo and redo can reach; a click goes back or forward to
+    /// one of them.
+    fn history_menu(&self, ui: &mut Ui, actions: &mut Vec<Action>) {
+        let Some(file) = &self.file else {
+            return;
+        };
+        let doc = &file.doc;
+        let done: Vec<&str> = doc.history().collect();
+        let undone: Vec<&str> = doc.redo_history().collect();
+        let enabled = !done.is_empty() || !undone.is_empty();
+        ui.add_enabled_ui(enabled, |ui| {
+            ui.menu_button("History", |ui| {
+                ui.set_min_width(260.0);
+                // The oldest steps are dropped beyond the undo depth.
+                let start = if done.len() < nsane::UNDO_DEPTH {
+                    format!("Opened {}", file.name())
+                } else {
+                    "Oldest step kept".to_owned()
+                };
+                let current = done.len();
+                egui::ScrollArea::vertical()
+                    .max_height(360.0)
+                    .show(ui, |ui| {
+                        let entries = std::iter::once(start.as_str())
+                            .chain(done.iter().copied())
+                            .chain(undone.iter().copied());
+                        for (position, label) in entries.enumerate() {
+                            let text = if position > current {
+                                RichText::new(label).weak().italics()
+                            } else {
+                                RichText::new(label)
+                            };
+                            let response = ui
+                                .add(Button::selectable(position == current, text))
+                                .on_hover_text(match position.cmp(&current) {
+                                    std::cmp::Ordering::Less => "Undo back to this step",
+                                    std::cmp::Ordering::Equal => "The save as it is now",
+                                    std::cmp::Ordering::Greater => "Redo up to this step",
+                                });
+                            if response.clicked() {
+                                let action = if position < current {
+                                    Action::Undo
+                                } else {
+                                    Action::Redo
+                                };
+                                let steps = position.abs_diff(current);
+                                actions.extend(std::iter::repeat_n(action, steps));
+                                ui.close();
+                            }
+                        }
+                    });
+            })
+            .response
+            .on_hover_text("Every step undo and redo can reach")
+            .on_disabled_hover_text("Nothing to undo or redo");
+        });
+    }
+
+    fn settings_menu(&mut self, ui: &mut Ui) {
+        ui.menu_button("⚙", |ui| {
+            let mut review = !self.prefs.skip_save_review;
+            if ui
+                .checkbox(&mut review, "Review the changes before saving")
+                .changed()
+            {
+                self.prefs.skip_save_review = !review;
+            }
+        })
+        .response
+        .on_hover_text("Settings");
     }
 
     fn theme_toggle(&mut self, ui: &mut Ui) {
@@ -832,6 +1063,8 @@ impl App {
         egui::CentralPanel::default().show(ui, |ui| {
             self.crash3.central(ui, doc, &mut self.selected, actions)
         });
+        let ctx = ui.ctx().clone();
+        self.crash3.windows(&ctx, doc, &mut self.selected, actions);
     }
 
     fn dialogs(&mut self, ctx: &Context) {
@@ -841,8 +1074,11 @@ impl App {
         let mut close = false;
         let mut then = None;
         let mut save_first = false;
+        let mut confirmed = false;
+        let mut dont_show_now = None;
         #[cfg(target_arch = "wasm32")]
         let mut download_as = None;
+        let blocked = self.save_blocked();
         match dialog {
             Dialog::Unsaved(next) => {
                 let (name, count) = match &mut self.file {
@@ -860,7 +1096,12 @@ impl App {
                     ));
                     ui.add_space(theme::SPACING);
                     ui.horizontal(|ui| {
-                        if ui.button("Save").clicked() {
+                        let save = ui.add_enabled(blocked.is_none(), Button::new("Save"));
+                        let save = match &blocked {
+                            Some(reason) => save.on_disabled_hover_text(reason.as_str()),
+                            None => save,
+                        };
+                        if save.clicked() {
                             save_first = true;
                             then = Some(next.clone());
                         }
@@ -873,6 +1114,48 @@ impl App {
                         }
                     });
                 });
+            }
+            Dialog::Review {
+                review,
+                target,
+                dont_show,
+                ..
+            } => {
+                let name = self.file.as_ref().map_or("The save", |f| f.name());
+                let mut dont_show = *dont_show;
+                Modal::new(Id::new("save-review")).show(ctx, |ui| {
+                    ui.set_max_width(480.0);
+                    ui.heading("Review the changes");
+                    ui.add_space(theme::SPACING);
+                    review.show(ui, name);
+                    ui.separator();
+                    target_text(ui, target);
+                    ui.add_space(theme::SPACING / 2.0);
+                    ui.checkbox(&mut dont_show, "Don't show this again")
+                        .on_hover_text(
+                            "Save without this review. Turn it back on in the settings (⚙).",
+                        );
+                    ui.add_space(theme::SPACING);
+                    ui.horizontal(|ui| {
+                        #[cfg(not(target_arch = "wasm32"))]
+                        let confirm = "Save file";
+                        #[cfg(target_arch = "wasm32")]
+                        let confirm = "Download";
+                        let response = ui.add_enabled(blocked.is_none(), Button::new(confirm));
+                        let response = match &blocked {
+                            Some(reason) => response.on_disabled_hover_text(reason.as_str()),
+                            None => response,
+                        };
+                        if response.clicked() {
+                            confirmed = true;
+                        }
+                        if ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(Key::Escape))
+                        {
+                            close = true;
+                        }
+                    });
+                });
+                dont_show_now = Some(dont_show);
             }
             Dialog::Error { title, message } => {
                 Modal::new(Id::new("error")).show(ctx, |ui| {
@@ -922,17 +1205,37 @@ impl App {
                 }
             }
         }
+        if let (Some(value), Some(Dialog::Review { dont_show, .. })) =
+            (dont_show_now, &mut self.dialog)
+        {
+            *dont_show = value;
+        }
         if close {
             self.dialog = None;
+        }
+        if confirmed
+            && let Some(Dialog::Review {
+                target,
+                then,
+                dont_show,
+                ..
+            }) = self.dialog.take()
+        {
+            if dont_show {
+                self.prefs.skip_save_review = true;
+            }
+            self.write(ctx, target, then);
         }
         #[cfg(target_arch = "wasm32")]
         if let Some(name) = download_as {
             self.dialog = None;
-            self.download(name);
+            self.review_or_write(ctx, Target::Download(name), None);
         }
         if let Some(then) = then {
             self.dialog = None;
-            if !save_first || self.save() {
+            if save_first {
+                self.save(ctx, Some(then));
+            } else {
                 self.proceed(ctx, then);
             }
         }
@@ -1095,7 +1398,7 @@ pub fn static_icon(ui: &mut Ui, icon: Icon, size: f32) -> egui::Response {
 /// File name, platform badge, size budget and unsaved changes.
 fn status(ui: &mut Ui, file: &mut OpenFile) {
     let pal = theme::palette(ui.visuals().dark_mode);
-    let name = ui.label(RichText::new(file.name()).strong());
+    let name = ui.add(egui::Label::new(RichText::new(file.name()).strong()).extend());
     #[cfg(not(target_arch = "wasm32"))]
     if let Some(path) = &file.path {
         name.on_hover_text(path.display().to_string());
@@ -1129,7 +1432,8 @@ fn status(ui: &mut Ui, file: &mut OpenFile) {
         } else {
             pal.text_weak
         };
-        ui.label(RichText::new(format!("{} / {} KB", kib(size.used), kib(capacity))).color(color))
+        let text = RichText::new(format!("{} / {} KB", kib(size.used), kib(capacity))).color(color);
+        ui.add(egui::Label::new(text).extend())
             .on_hover_text(format!(
                 "The save data takes {} of the {} bytes of a Switch save file.",
                 size.used, capacity
@@ -1143,11 +1447,41 @@ fn status(ui: &mut Ui, file: &mut OpenFile) {
         } else {
             format!("• {}", plural(count, "change", "changes"))
         };
-        ui.label(RichText::new(text).color(pal.warning.base))
+        ui.add(egui::Label::new(RichText::new(text).color(pal.warning.base)).extend())
             .on_hover_text(format!(
                 "Not saved yet. {} since the file was opened.",
                 plural(count, "change", "changes")
             ));
+    }
+}
+
+/// Where the reviewed save goes: the file and its backup, or the download.
+fn target_text(ui: &mut Ui, target: &Target) {
+    match target {
+        #[cfg(not(target_arch = "wasm32"))]
+        Target::File { path, now } => {
+            ui.add(egui::Label::new(format!("Writes {}", path.display())).wrap());
+            if path.exists() {
+                let backup = crate::io::native::free_backup_path(path, *now);
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(format!(
+                            "The file it replaces is kept as {}",
+                            backup.display()
+                        ))
+                        .weak(),
+                    )
+                    .wrap(),
+                );
+            } else {
+                ui.weak("A new file: there is nothing to back up.");
+            }
+        }
+        #[cfg(target_arch = "wasm32")]
+        Target::Download(name) => {
+            ui.label(format!("Downloads {name}"));
+            ui.weak("The file it was opened from is left as it was.");
+        }
     }
 }
 
