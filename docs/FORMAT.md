@@ -3,10 +3,10 @@
 This is the format reference for the editor. The code and the other documents of this repository cite it. Every rule below names its evidence, using these sources:
 
 - **Saves the game wrote.** `saves/0001.sav`–`0019.sav` and `saves/initial_game.sav`: one Switch playthrough, one save after each step (see the [save log](#11-save-log)). `saves/ALCHEMYXSAVE_8.sav`: a fresh PC game. The `*_after*.sav` and `r7a*.sav` files in `test_saves/`: what the game wrote after a live test.
-- **Live tests.** Saves made by the editor, loaded on a Switch or a PC, played, and often saved again by the game. They are named T1–T8, R7 and PC1/PC2 after the test rounds. The files are in `test_saves/`, and the results are in the [live test log](#10-live-test-log).
+- **Live tests.** Saves made by the editor, loaded on a Switch or a PC, played, and often saved again by the game. They are named T1–T8, R7, PC1/PC2 and R8 after the test rounds. The files are in `test_saves/`, and the results are in the [live test log](#10-live-test-log).
 - **Public sources.** Community guides and wikis, cited by URL where they are used.
 
-"All observed saves" means the 54 `.sav` files in `saves/` and `test_saves/`, outside `test_saves/round8/`. That folder holds the saves of a newer test round, which the [live test log](#10-live-test-log) will cover once they have been loaded in game.
+"All observed saves" means the 54 `.sav` files in `saves/` and `test_saves/`, outside `test_saves/round8/`. That folder holds round 8 (R8): the saves the editor made for it and those the game wrote afterwards (`*_after.sav`), described in the [live test log](#10-live-test-log).
 
 ## Contents
 
@@ -37,7 +37,7 @@ This is the format reference for the editor. The code and the other documents of
 
 - **Switch.** An edited file is written back padded to 153,600 bytes, and an edit whose content no longer fits is refused. A 108% save with every scene flag set uses 68,157 bytes before padding (`test_saves/t8_full108_scenes.sav`).
 - **PC.** An edited file is written at its new length. A full 108% edit grows the fresh save from 64,781 to 68,318 bytes. PC1 (same size) and PC2 (grown) both loaded in game.
-- **Converting between platforms.** The game data maps one to one by meaning (zone path, variable name, flag key, summary key), not by object id. The editor copies it into a save of the target platform (a "template") and keeps the template's own container: type registry, ids, "no reference" values, bool upper bytes and padding. Both fresh saves convert to each other byte for byte. A converted save has not been loaded in game yet.
+- **Converting between platforms.** The game data maps one to one by meaning (zone path, variable name, flag key, summary key), not by object id. The editor copies it into a save of the target platform (a "template") and keeps the template's own container: type registry, ids, "no reference" values, bool upper bytes and padding. Both fresh saves convert to each other byte for byte. Converted saves load in game in both directions with the same progress, and the game's next save keeps all of it (R8: Switch → PC and PC → Switch).
 - **All three games are in one file.** Every save holds 116 zone sessions (`crash1/…`, `crash2/…`, `crash3/…`, `whiterooms/…`) and the variables of the three games. Only Crash 3 is decoded here.
 - **Save slots.** Each game has 4 save slots, and each slot is one file numbered `<n>` = 0 to 11, the same on both platforms: 0–3 for Crash Bandicoot, 4–7 for Crash 2 and 8–11 for Crash 3 (`MACK_8.sav`… `MACK_11.sav`, `ALCHEMYXSAVE_8.sav`… `ALCHEMYXSAVE_11.sav`). Observed on the PC and on the Switch by looking at the files each slot writes. `saves/ALCHEMYXSAVE_8.sav` is the first Crash 3 slot. What the game does with a Crash 3 save placed in another game's slot has not been tested. On the PC used here, the save files are in `%APPDATA%\Game`.
 
@@ -246,12 +246,12 @@ The table at the top of the file holds what the save slot screen shows. The game
 | `farthest_chapter` | int | Always 0 in Crash 3 saves; left unchanged | All observed saves |
 | `farthest_progression_index` | int | Furthest story point reached; rule below | 0001–0019 |
 | `previous_level_progression_index` | int | Progression index of the last zone entered; -1 in a fresh save. Updated even by an immediate quit. | `initial_game.sav`, R7 step 1 |
-| `previous_level_name` | string | Zone path of the last zone entered. **Absent from a fresh save.** | `initial_game.sav`, R7 |
+| `previous_level_name` | string | Zone path of the last zone entered. **Absent from a fresh save.** When the game saves a file that has no last level (`previous_level_progression_index` −1) before any level is entered, it can write a few meaningless bytes here instead (5 in `l2_after.sav`); the game loaded fine before that save. | `initial_game.sav`, R7, R8 |
 | `credits_watched` | int | Always 0 in Crash 3 saves; left unchanged. It stayed 0 after the ending (T7) and after watching the credits from the menu (R7). | All observed saves |
 | `story_completed` | int | 1 once Cortex is beaten | `t7_after_beating_cortex.sav` |
 | `active_progression_index` | int | 1 in 0001, 0 in every other observed save, including all saves made in the hub in R7. Left unchanged. | All observed saves |
 | `percent_complete` | float | crystals + gems + relics (any tier) + bosses defeated | All observed saves |
-| `life_count` | int | **The only place lives are stored.** The game reads it back on load: 42 in lives42 loaded with 42 lives, and dying gave 41 (0019). | lives42, PC1 |
+| `life_count` | int | **The only place lives are stored.** The game reads it back on load: 42 in lives42 loaded with 42 lives, and dying gave 41 (0019). 255 loads and shows as 255, and dying gives 254; at 254, picking up a life (twice) left the counter at 254, so the game adds no life above some maximum, not yet found. | lives42, PC1, R8 |
 | `key_count` | int | Always 0 in Crash 3 saves; left unchanged | All observed saves |
 | `crystal_count`, `gem_count`, `sapphire_count`, `gold_count`, `platinum_count` | int | Totals | All observed saves |
 
@@ -285,7 +285,7 @@ These rules come from live tests and guides. The save has no storage of its own 
 - **Hot Coco**: through the alien road sign in Road Crash [PowerPyx Hot Coco]; worked in T6.
 - **Eggipus Rex**: through the yellow gem path in Dino Might! [PowerPyx Eggipus Rex]; reached in T2.
 - **Future Tense**: from the pad above the hub centre, playable at any point in the game [Press Start Future Tense, Wiki Future Tense]; worked in T6.
-- **Bonus gem.** Observed: with every other gem and every relic gold or better (107%), the game spawned the 47th gem in the central warp room; picking it up gave 108% and set `LastGemRewarded` (T7). Guides give the same condition: "all gems and gold / platinum relics" [PowerPyx gems]. The editor's "bonus gem due" indicator uses gold-or-better relics ≥ 30, percentage ≥ 107 and the flag not set; whether 30 such relics (one sapphire left) are enough is **being confirmed in game**.
+- **Bonus gem.** Observed: with every other gem and every relic gold or better (107%), the game spawned the 47th gem in the central warp room; picking it up gave 108% and set `LastGemRewarded` (T7). Guides give the same condition: "all gems and gold / platinum relics" [PowerPyx gems]. With 30 gold relics and one sapphire (still 107%), the gem spawned too, and picking it up set `LastGemRewarded` (R8). The editor's "bonus gem due" indicator uses gold-or-better relics ≥ 30, percentage ≥ 107 and the flag not set. Whether fewer than 30 are enough was not tested.
 - **Secret ending.** Beating Cortex again at 108% plays it and sets `OneHundredCortexBeat` (T6, T7).
 
 ## 8. What an edit must write
@@ -325,9 +325,11 @@ The editor uses the values below. Each value lists the public sources that give 
 | Q | Steam guide "Crash Bandicoot: Warped: Quick Time Trial Reference": <https://steamcommunity.com/sharedfiles/filedetails/?id=1443157942>. It credits S, and marks Hot Coco and Eggipus Rex as approximate. |
 | H | Steam guide "Crash Bandicoot N. Sane Trilogy 100% completion – short text guide" (gold and platinum only): <https://steamcommunity.com/sharedfiles/filedetails/?id=3430571654> |
 | P | PowerPyx, "Crash Bandicoot 3: Warped – Time Trial Speedruns Guide (Gold Relics)" (gold only, no Future Tense): <https://www.powerpyx.com/crash-bandicoot-3-warped-time-trial-speedruns-guide-gold-relics/> |
-| game | Shown in game during the playthrough (0010, 0011) |
+| game | Shown in game: during the playthrough (0010, 0011), and on the PC time panels in R8 |
 
-These sources partly copy each other (Q credits S), so agreement between them is not fully independent. **To be confirmed** marks a value that no public source gives, or that the sources dispute; those values are being checked in game.
+These sources partly copy each other (Q credits S), so agreement between them is not fully independent.
+
+On PC, a level's time panel shows the time of the **next** relic only: the sapphire time with no relic, the gold time with sapphire, and so on. R8 put four levels one relic below the value to read. The panels showed Deep Trouble gold **1:15.12**, Double Header gold **1:21.12** and Future Frenzy platinum **1:19.62**, the values most sources give, and Sphynxinator gold 1:22.63, as every source gives. For the first three, the editor's threshold is one centisecond above the panel, with the strict rule `time < threshold`: a time of 1:15.12 or faster earns gold. A run timed to exactly that hundredth was not tried. Hot Coco and Eggipus Rex have no time panel or leaderboard in game, so their values can't be read there.
 
 | Level | Platinum | Gold | Sapphire |
 |---|---|---|---|
@@ -342,14 +344,14 @@ These sources partly copy each other (Q credits S), so agreement between them is
 | Tomb Time | 0:53.90 · all | 1:10.00 · W L S H P (Q: 1:10.26) | 1:42.00 · all |
 | Midnight Run | 0:18.20 · L S Q H (W: 0:18.10) | 0:38.23 · all | 0:51.00 · all |
 | Dino Might! | 1:03.00 · all | 1:25.76 · all | 1:34.00 · all |
-| Deep Trouble | 1:08.33 · all | 1:15.13 · L H; W S Q P: 1:15.12. **To be confirmed** | 1:37.00 · all |
+| Deep Trouble | 1:08.33 · all | 1:15.13 · L H; W S Q P: 1:15.12. Panel: 1:15.12 (R8) | 1:37.00 · all |
 | High Time | 0:56.93 · all | 1:04.10 · all | 2:12.00 · all |
 | Road Crash | 1:23.10 · all | 1:26.70 · all | 1:31.00 · all |
-| Double Header | 0:59.40 · all | 1:21.13 · all sources: 1:21.12. **To be confirmed** | 1:27.00 · all |
-| Sphynxinator | 0:56.70 · all | 1:22.63 · all | 1:42.00 · all |
+| Double Header | 0:59.40 · all | 1:21.13 · all sources: 1:21.12. Panel: 1:21.12 (R8) | 1:27.00 · all |
+| Sphynxinator | 0:56.70 · all | 1:22.63 · all; game (R8) | 1:42.00 · all |
 | Bye Bye Blimps | 0:31.50 · all | 0:38.40 · all | 0:49.00 · all |
 | Tell No Tales | 1:15.23 · all | 1:35.63 · all | 2:12.00 · all |
-| Future Frenzy | 1:19.63 · all sources: 1:19.62. **To be confirmed** | 1:34.00 · all | 2:01.00 · all |
+| Future Frenzy | 1:19.63 · all sources: 1:19.62. Panel: 1:19.62 (R8) | 1:34.00 · all | 2:01.00 · all |
 | Tomb Wader | 1:24.00 · all | 1:45.03 · all | 2:44.00 · all |
 | Gone Tomorrow | 1:02.10 · all | 1:25.60 · all | 2:05.00 · all |
 | Orange Asphalt | 1:23.80 · all | 1:33.30 · all | 1:38.00 · all |
@@ -359,15 +361,15 @@ These sources partly copy each other (Q credits S), so agreement between them is
 | Ski Crazed | 0:36.30 · all | 0:53.50 · all | 1:19.00 · all |
 | Area 51? | 1:52.50 · all | 1:57.80 · all | 2:01.00 · all |
 | Rings of Power | 1:01.73 · all | 1:11.46 · all | 1:30.00 · all |
-| Hot Coco | 0:19.96 · W S Q; L H: 0:19.93. **To be confirmed** | 0:30.10 · W L S Q H (P: 0:30.08) | 1:00.00 · all |
-| Eggipus Rex | 0:47.83 · W: 0:46.83; L S Q H: 0:47.74. **To be confirmed** | 0:53.03 · W L H: 0:52.03; S Q: 0:53.01; P: 0:50.00. **To be confirmed** | 0:58.00 · Q (approximate); W L: 0:57.00; S: 0:59.00. **To be confirmed** |
+| Hot Coco | 0:19.96 · W S Q; L H: 0:19.93. Not shown in game | 0:30.10 · W L S Q H (P: 0:30.08) | 1:00.00 · all |
+| Eggipus Rex | 0:47.83 · W: 0:46.83; L S Q H: 0:47.74. Not shown in game | 0:53.03 · W L H: 0:52.03; S Q: 0:53.01; P: 0:50.00. Not shown in game | 0:58.00 · Q (approximate); W L: 0:57.00; S: 0:59.00. Not shown in game |
 | Future Tense | 0:52.17 · all | 1:15.43 · all | 2:01.52 · all |
 
 The isolated differences (Tomb Time gold in Q, Midnight Run platinum in W, Hot Coco gold in P) disagree with every other source and look like typing errors.
 
 ## 10. Live test log
 
-The tests ran on a Switch (step2, T1–T8, R7, lives42) and on PC (PC1, PC2). Each test save has its own life count, so the loaded file can be confirmed on the save slot.
+The tests ran on a Switch (step2, T1–T8, R7, lives42, most of R8) and on PC (PC1, PC2, two R8 files). Each test save has its own life count, so the loaded file can be confirmed on the save slot.
 
 | Test | File | Edit | Result in game |
 |---|---|---|---|
@@ -391,6 +393,14 @@ The tests ran on a Switch (step2, T1–T8, R7, lives42) and on PC (PC1, PC2). Ea
 | R7 | `test_saves/r7_base.sav` → `r7a1.sav`–`r7a5.sav` | Under Pressure: quit at once, break a crate, collect fruit, lose a life, finish | `completions` rises only on the finish. `previous_level_*` follow the last level entered. Credits watched from the menu: the save didn't change. |
 | PC1 | `test_saves/pc/pc1_lives42.sav` | Fresh PC save, lives 4 → 42, same size | 42 lives |
 | PC2 | `test_saves/pc/pc2_full108.sav` | Everything; the file grows from 64,781 to 68,318 bytes | 108%, everything open, no story scenes |
+| R8 | `test_saves/round8/l1_switch_to_pc.sav` (PC) | 0019 with 61 lives, converted to PC with the fresh PC save as template | Same progress as 0019: totals, rooms, abilities, scenes. The game's save after finishing Toad Village (`l1_after.sav`) changes only Toad Village's `completions`, 5 → 6. |
+| R8 | `test_saves/round8/l2_pc_to_switch.sav` | Fresh PC save made 108% (platinum, a time just under each threshold, scenes seen), 62 lives, converted to Switch with the fresh Switch save as template | 108%, everything open, no scene plays. The game's save in the hub (`l2_after.sav`) keeps all game data and adds meaningless bytes as `previous_level_name` (§6). |
+| R8 | `test_saves/round8/l3_reset_level.sav` | 0019 with Under Pressure reset to never played, 63 lives | Under Pressure shows as never played: no crystal, gem, relic or time trial; totals 9 crystals, 5 gems; nothing else changed. Nothing special on the next visit. Finishing it (`l3_after.sav`) writes a normal first visit: state 1, `completions` 1, crystal. |
+| R8 | `test_saves/round8/l4_story_up_to_3.sav` | Fresh Switch save with rooms 1–3's crystals, the first three bosses with their abilities and scenes, 64 lives | Rooms 1–4 open, no N. Gin portal (15 crystals), no glitch, no scene plays, the three abilities work. `l4_after.sav`: Sphynxinator finished on a first visit. |
+| R8 | `test_saves/round8/l5_relics_matching.sav` | 0019 with gold on every level and a time just under gold where none earned it, 65 lives | 31 gold relics; every secret level opens. The game's save (`l5_after.sav`) changes nothing. |
+| R8 | `test_saves/round8/l6_relic_panels_pc.sav` (PC) | PC2 with Deep Trouble, Double Header and Sphynxinator at sapphire and Future Frenzy at gold, 66 lives | The time panels show the next relic's time: see §9 |
+| R8 | `test_saves/round8/l7_bonus_gem_30.sav` | T7 with Future Tense at sapphire: 30 gold relics and 1 sapphire, 107%, 67 lives | The 47th gem spawns; picking it up gives 108% and sets `LastGemRewarded` (`l7_after.sav`). |
+| R8 | `test_saves/round8/l8_lives_255.sav` | 0019 with 255 lives | 255 shown; dying gives 254; at 254, picking up a life twice leaves 254 (`l8_after.sav`). |
 
 `test_saves/t7_after_picking_47th_gem.sav` is byte-identical to `t7_bonus_gem.sav` (the wrong file was copied back); `t7_after_beating_cortex.sav` shows the gem taken. `test_saves/r7_racegems.sav` (both gems of Area 51? and Rings of Power removed) was prepared but not played.
 

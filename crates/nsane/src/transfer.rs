@@ -18,9 +18,10 @@ use crate::crash3::Crash3Save;
 use crate::{Error, Platform};
 
 /// Whether a converted save was confirmed to load in game, on both
-/// platforms, with the same progress. Until then the GUI says the
-/// conversion is experimental.
-pub const VERIFIED_IN_GAME: bool = false;
+/// platforms, with the same progress. While false, the GUI says the
+/// conversion is experimental. Confirmed in round 8 of the live tests
+/// (`docs/FORMAT.md` §10).
+pub const VERIFIED_IN_GAME: bool = true;
 
 /// The only `save_version` the editor knows.
 pub const SAVE_VERSION: i32 = 75;

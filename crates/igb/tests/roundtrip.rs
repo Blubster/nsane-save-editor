@@ -48,7 +48,7 @@ fn load(rel: &str) -> IgbFile {
 #[test]
 fn every_save_round_trips_byte_for_byte() {
     let saves = all_saves();
-    assert_eq!(saves.len(), 62, "expected 62 save files");
+    assert_eq!(saves.len(), 69, "expected 69 save files");
     let mut failures = Vec::new();
     for (name, data) in &saves {
         match IgbFile::parse(data).and_then(|f| f.build()) {
@@ -74,6 +74,7 @@ fn only_pc_saves_are_unpadded() {
         let pc = name == "saves/ALCHEMYXSAVE_8.sav"
             || name.starts_with("test_saves/pc/")
             || name == "test_saves/round8/l1_switch_to_pc.sav"
+            || name == "test_saves/round8/l1_after.sav"
             || name == "test_saves/round8/l6_relic_panels_pc.sav";
         assert_eq!(file.padded(), !pc, "{name}");
         assert_eq!(file.file_size(), data.len(), "{name}");

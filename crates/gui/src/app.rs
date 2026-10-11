@@ -1069,7 +1069,12 @@ impl App {
                             .button(format!("Convert to {target}…"))
                             .on_hover_text(format!(
                                 "Make a copy of this save for the {target} version of the \
-                                 game (experimental)"
+                                 game{}",
+                                if nsane::transfer::VERIFIED_IN_GAME {
+                                    ""
+                                } else {
+                                    " (experimental)"
+                                }
                             ))
                             .clicked()
                         {

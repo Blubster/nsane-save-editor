@@ -909,7 +909,7 @@ fn reset_asks_first_and_undo_restores_the_level() {
     harness.get_by_label(
         "Reset Deep Trouble to never played? Removes its crystal, gems, relic and times.",
     );
-    harness.get_by_label("Not yet tested in game.");
+    assert!(harness.query_by_label("Not yet tested in game.").is_none());
     click(&mut harness, "Cancel");
     assert!(history(&harness).is_empty());
 
@@ -1583,7 +1583,11 @@ fn converting_0019_to_pc_and_back() {
     assert!(harness.query_by_label("Convert to Switch…").is_none());
     open_dialog(&mut harness, "Convert to PC…");
     assert_eq!(convert(&harness).target, nsane::Platform::Pc);
-    harness.get_by_label_contains("Not yet tested in game. Keep a backup of your saves.");
+    assert!(
+        harness
+            .query_by_label_contains("Not yet tested in game")
+            .is_none()
+    );
     harness.get_by_label("0019.sav · Switch · 19% · 41 lives");
     assert!(disabled(&harness, "Convert…"), "no template yet");
     // Shortcuts wait while the dialog is open.

@@ -525,8 +525,8 @@ const fn rt(key: &str, platinum: u32, gold: u32, sapphire: u32) -> RelicTimes {
 /// Relic thresholds of the 31 levels with a time trial, in [`LEVELS`] order.
 /// The values and the public sources that agree with each one are listed in
 /// `docs/FORMAT.md` §9; Toad Village's gold and sapphire were also shown in
-/// game. The values that section marks "to be confirmed" are being checked in
-/// game.
+/// game, and the panels' readings of the values the sources disagree on are
+/// explained there too.
 #[rustfmt::skip]
 pub const RELIC_TIMES: [RelicTimes; 31] = [
     rt("toadvillage", 4403, 5750, 6300),

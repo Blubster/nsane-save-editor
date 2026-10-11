@@ -103,7 +103,7 @@ pub enum Edit {
     },
     /// Returns a level or boss to its state in a new game: no relic, colored
     /// gem, times or collectibles, and never entered. Abilities and story
-    /// scenes are left alone. Not yet confirmed in game: see
+    /// scenes are left alone. Confirmed in game: see
     /// [`RESET_LEVEL_VERIFIED`](super::RESET_LEVEL_VERIFIED).
     ResetLevel {
         level: LevelId,

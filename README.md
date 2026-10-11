@@ -23,7 +23,7 @@ It runs on Windows and Linux as a single program with nothing to install, and in
 - **Presets.** Complete everything (108%), the story up to a warp room, every relic at a tier, every super power, every story scene, or reset a level. Each shows a preview of the changes and the resulting totals first.
 - **Diagnostics.** Warnings about states the game handles badly (for example a boss portal that can't be entered because of extra crystals), relics that don't match their times, and a Switch save that would no longer fit its file. Most come with a fix.
 - **Safe editing.** Undo and redo, a history of every step, a review of the changes before saving, and on the desktop a timestamped backup of the file being replaced.
-- **Switch ↔ PC conversion (experimental).** Converts a save to the other platform by copying its game data into a save from that platform: one of your own, or the new-game save built into the editor. It has not been checked in game yet, so keep backups.
+- **Switch ↔ PC conversion.** Converts a save to the other platform by copying its game data into a save from that platform: one of your own, or the new-game save built into the editor. Converted saves were checked in game both ways (Switch to PC and PC to Switch).
 
 The percentage, the totals and the other values the game shows on the save slot screen are recomputed on every save.
 

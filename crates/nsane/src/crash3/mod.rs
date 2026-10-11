@@ -17,5 +17,6 @@ pub use tables::{
 pub use time::{ParseTimeError, format_time, parse_time, relic_for_time};
 
 /// Whether [`Edit::ResetLevel`] was confirmed in game: a reset level must
-/// show as never played. Until then the GUI says it is untested.
-pub const RESET_LEVEL_VERIFIED: bool = false;
+/// show as never played. While false, the GUI says it is untested.
+/// Confirmed in round 8 of the live tests (`docs/FORMAT.md` §10).
+pub const RESET_LEVEL_VERIFIED: bool = true;
