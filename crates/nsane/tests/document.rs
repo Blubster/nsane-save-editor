@@ -426,3 +426,38 @@ fn preview_shows_what_the_edits_add_to_the_current_state() {
         .unwrap_err();
     assert!(matches!(err, EditError::UnknownLevel(_)));
 }
+
+#[test]
+fn redo_history_and_generation() {
+    let mut doc = open("saves/0019.sav");
+    let opened = doc.generation();
+    for count in 1..=3 {
+        doc.apply(format!("lives {count}"), vec![Edit::SetLives { count }])
+            .unwrap();
+    }
+    let last = doc.generation();
+    assert_ne!(last, opened);
+    assert_eq!(doc.redo_history().count(), 0);
+
+    doc.undo();
+    doc.undo();
+    assert_eq!(
+        doc.redo_history().collect::<Vec<_>>(),
+        ["lives 2", "lives 3"],
+        "next first"
+    );
+    assert_eq!(doc.history().collect::<Vec<_>>(), ["lives 1"]);
+    doc.undo();
+    assert_eq!(doc.generation(), opened, "undo brings the number back");
+    doc.redo();
+    doc.redo();
+    doc.redo();
+    assert_eq!(doc.generation(), last);
+
+    // a new step after an undo gets a number never used before
+    doc.undo();
+    doc.apply("lives 9", vec![Edit::SetLives { count: 9 }])
+        .unwrap();
+    assert_eq!(doc.redo_history().count(), 0);
+    assert!(doc.generation() > last);
+}

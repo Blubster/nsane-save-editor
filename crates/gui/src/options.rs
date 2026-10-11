@@ -3,6 +3,31 @@
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
 
+use nsane::crash3::LevelId;
+
+/// A state of the window that `--view` sets up, for screenshots.
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))] // set from the command line
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum View {
+    /// The question asked before an unsaved document is closed.
+    Unsaved,
+}
+
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))] // set from the command line
+impl View {
+    pub const ALL: [View; 1] = [View::Unsaved];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            View::Unsaved => "unsaved",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<View> {
+        View::ALL.into_iter().find(|v| v.name() == name)
+    }
+}
+
 #[derive(Debug, Default, PartialEq)]
 pub struct Options {
     /// Show the icon gallery instead of the editor.
@@ -16,6 +41,12 @@ pub struct Options {
     /// Start maximized.
     #[cfg(not(target_arch = "wasm32"))]
     pub maximized: bool,
+    /// A save to open at start.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub open: Option<PathBuf>,
+    /// The level selected at start.
+    pub select: Option<LevelId>,
+    pub view: Option<View>,
     /// Capture the window to these PNG files in turn, then quit.
     #[cfg(not(target_arch = "wasm32"))]
     pub screenshots: Vec<Shot>,
@@ -33,6 +64,9 @@ pub struct Shot {
 pub const USAGE: &str = "\
 usage: nsane-save-editor [options]
 
+  --open FILE.sav        open a save
+  --select LEVEL         select a level by its key, e.g. toadvillage
+  --view NAME            show a dialog at start: unsaved
   --icon-gallery         show every icon in every state and size
   --theme light|dark     force a theme instead of following the system
   --size WxH             inner window size in points, e.g. 1280x800
@@ -49,6 +83,19 @@ impl Options {
         while let Some(arg) = args.next() {
             let mut value = |name: &str| args.next().ok_or(format!("{name} needs a value"));
             match arg.as_str() {
+                "--open" => options.open = Some(value("--open")?.into()),
+                "--select" => {
+                    let key = value("--select")?;
+                    options.select =
+                        Some(LevelId::from_key(&key).ok_or(format!("unknown level {key:?}"))?);
+                }
+                "--view" => {
+                    let name = value("--view")?;
+                    options.view = Some(View::from_name(&name).ok_or_else(|| {
+                        let names: Vec<_> = View::ALL.iter().map(|v| v.name()).collect();
+                        format!("unknown view {name:?} (one of: {})", names.join(", "))
+                    })?);
+                }
                 "--icon-gallery" => options.icon_gallery = true,
                 "--theme" => {
                     options.dark = Some(match value("--theme")?.as_str() {
@@ -119,6 +166,25 @@ mod tests {
     }
 
     #[test]
+    fn parses_the_document_flags() {
+        let o = parse(&[
+            "--open",
+            "saves/0019.sav",
+            "--select",
+            "toadvillage",
+            "--view",
+            "unsaved",
+            "--screenshot",
+            "out.png",
+        ])
+        .unwrap();
+        assert_eq!(o.open, Some("saves/0019.sav".into()));
+        assert_eq!(o.select, LevelId::from_key("toadvillage"));
+        assert_eq!(o.view, Some(View::Unsaved));
+        assert_eq!(o.screenshots.len(), 1);
+    }
+
+    #[test]
     fn each_screenshot_takes_the_theme_before_it() {
         let o = parse(&[
             "--screenshot",
@@ -145,5 +211,8 @@ mod tests {
         assert!(parse(&["--size", "12"]).is_err());
         assert!(parse(&["--size", "0x10"]).is_err());
         assert!(parse(&["--frobnicate"]).is_err());
+        assert!(parse(&["--open"]).is_err());
+        assert!(parse(&["--select", "nowhere"]).is_err());
+        assert!(parse(&["--view", "nothing"]).is_err());
     }
 }

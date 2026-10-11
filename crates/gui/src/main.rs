@@ -2,10 +2,14 @@
 
 mod app;
 mod gallery;
+mod games;
 mod icons;
+mod io;
 mod options;
 #[cfg(not(target_arch = "wasm32"))]
 mod screenshot;
+#[cfg(test)]
+mod test_util;
 mod theme;
 
 use app::App;
@@ -13,7 +17,7 @@ use options::Options;
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
-    env_logger::init(); // RUST_LOG=debug for more
+    io::native::init_logger(); // RUST_LOG=debug for more
 
     let options = match Options::parse(std::env::args().skip(1)) {
         Ok(options) => options,

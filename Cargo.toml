@@ -16,6 +16,7 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.152"
 
 # tests
+egui_kittest = "=0.36.2"
 sha2 = "0.11.0"
 
 eframe = "=0.36.2"
@@ -23,8 +24,10 @@ egui = "=0.36.2"
 log = "0.4.27"
 
 # native
+chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 env_logger = "0.11.8"
 png = "0.18.1"
+rfd = "0.17.2"
 
 # web
 wasm-bindgen-futures = "0.4.50"

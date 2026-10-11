@@ -328,6 +328,17 @@ impl Document {
         self.undo.iter().map(|s| s.label.as_str())
     }
 
+    /// The labels of the steps redo can bring back, next first.
+    pub fn redo_history(&self) -> impl Iterator<Item = &str> {
+        self.redo.iter().rev().map(|s| s.label.as_str())
+    }
+
+    /// Identifies the current state: equal numbers mean equal states, so
+    /// values derived from the state can be cached per generation.
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
     /// Whether the current state differs from the last one saved (or opened).
     pub fn is_dirty(&self) -> bool {
         self.generation != self.saved_generation
