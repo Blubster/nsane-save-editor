@@ -8,7 +8,7 @@ use std::cmp::Reverse;
 use super::edit::Edit;
 use super::model::{Crash3Save, Warning};
 use super::presets::matching_time;
-use super::tables::{BOSSES, Kind, LevelId, Relic, relic_counted_key};
+use super::tables::{BOSSES, Kind, LevelId, PICKUP_LIVES_MAX, Relic, relic_counted_key};
 use super::time::{format_time, relic_for_time};
 use crate::slot::{CRASH3_SLOTS, file_name as slot_file_name, parse_file_name, slot_game};
 use crate::{Platform, SizeReport};
@@ -89,6 +89,9 @@ pub fn diagnostics(
     out.extend(save.warnings().into_iter().map(|w| warning(save, w)));
     if save.bonus_gem_due() {
         out.push(bonus_gem_due(save));
+    }
+    if save.lives() > PICKUP_LIVES_MAX {
+        out.push(lives_above_pickup_max(save));
     }
     for level in LevelId::all() {
         level_diagnostics(save, level, &mut out);
@@ -251,6 +254,21 @@ fn bonus_gem_due(save: &Crash3Save) -> Diagnostic {
     .with_fix(
         "Give the bonus gem now".to_owned(),
         vec![Edit::SetBonusGem { on: true }],
+    )
+}
+
+/// Play never takes lives above [`PICKUP_LIVES_MAX`], but a higher count
+/// works (`docs/FORMAT.md` §6), so this only says what the game will do.
+fn lives_above_pickup_max(save: &Crash3Save) -> Diagnostic {
+    Diagnostic::new(
+        Severity::Info,
+        "lives_above_99",
+        None,
+        format!(
+            "{} lives: the game keeps them, but picking up a life adds nothing until the \
+             counter is back under {PICKUP_LIVES_MAX}. This is harmless.",
+            save.lives()
+        ),
     )
 }
 

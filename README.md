@@ -19,7 +19,7 @@ It runs on Windows and Linux as a single program with nothing to install, and in
 
 - **Levels.** Turn each level's crystal, clear gem, second gem and colored gem on or off, set its relic (sapphire, gold, platinum) and its three time trial times. See whether a level was entered and its completion counter.
 - **Warp rooms.** Unlock warp rooms, even early, by defeating their bosses, optionally with the boss's super power and with its story scenes marked as seen. Reach the relic counts that open the secret warp room's levels.
-- **Super powers, story scenes and lives.** Turn each super power on or off, mark story scenes as seen or not, set lives from 0 to 255.
+- **Super powers, story scenes and lives.** Turn each super power on or off, mark story scenes as seen or not, set lives from 0 to 255 (the game keeps any of them, but only adds lives picked up below 99).
 - **Presets.** Complete everything (108%), the story up to a warp room, every relic at a tier, every super power, every story scene, or reset a level. Each shows a preview of the changes and the resulting totals first.
 - **Diagnostics.** Warnings about states the game handles badly (for example a boss portal that can't be entered because of extra crystals), relics that don't match their times, and a Switch save that would no longer fit its file. Most come with a fix.
 - **Safe editing.** Undo and redo, a history of every step, a review of the changes before saving, and on the desktop a timestamped backup of the file being replaced.

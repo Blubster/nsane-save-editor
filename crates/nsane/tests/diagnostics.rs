@@ -230,6 +230,36 @@ fn portal_glitch_with_12_crystals_defeats_the_first_two_bosses() {
 }
 
 #[test]
+fn lives_above_99_is_a_note() {
+    let doc = open("test_saves/round8/l8_lives_255.sav");
+    let d = the(&doc, "lives_above_99", None);
+    assert_eq!(d.severity, Severity::Info);
+    assert!(d.fix.is_none());
+    assert_eq!(
+        d.message,
+        "255 lives: the game keeps them, but picking up a life adds nothing until the counter \
+         is back under 99. This is harmless."
+    );
+    assert!(
+        find(
+            &open("test_saves/round9/r9_lives_99.sav"),
+            "lives_above_99",
+            None
+        )
+        .is_empty()
+    );
+    assert_eq!(
+        find(
+            &open("test_saves/round9/r9_lives_100.sav"),
+            "lives_above_99",
+            None
+        )
+        .len(),
+        1
+    );
+}
+
+#[test]
 fn bonus_gem_due_on_t7() {
     let mut doc = open("test_saves/t7_bonus_gem.sav");
     let d = the(&doc, "bonus_gem_due", None);

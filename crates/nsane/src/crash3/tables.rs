@@ -730,6 +730,11 @@ pub const BONUS_GEM_KEY: &str = "LastGemRewarded";
 /// Flag table key set when Cortex is beaten again at 108% (secret ending).
 pub const SECRET_ENDING_KEY: &str = "OneHundredCortexBeat";
 
+/// Picking up a life adds one only while the counter is below this. A
+/// higher count, up to 255, still loads, shows and counts down
+/// (`docs/FORMAT.md` §6).
+pub const PICKUP_LIVES_MAX: i32 = 99;
+
 const CUTSCENE_PREFIX: &str = "l300_hub_talkingheadcutscenes.";
 
 /// The flag table key of a hub story scene seen.

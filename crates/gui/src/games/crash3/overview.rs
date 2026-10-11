@@ -8,7 +8,9 @@ use nsane::crash3::tables::{
     MAX_BONUS_GEMS, MAX_BOSSES, MAX_CLEAR_GEMS, MAX_COLORED_GEMS, MAX_CRYSTALS, MAX_GEMS,
     MAX_PERCENT, MAX_RELICS, MAX_SECOND_GEMS,
 };
-use nsane::crash3::{BOSSES, Edit, LevelId, Relic, SECRET_ROOM, Severity, Totals};
+use nsane::crash3::{
+    BOSSES, Edit, LevelId, PICKUP_LIVES_MAX, Relic, SECRET_ROOM, Severity, Totals,
+};
 
 use super::level_row;
 use super::rooms;
@@ -29,12 +31,17 @@ pub fn lives(ui: &mut Ui, doc: &Document, pending: &mut Option<i32>, actions: &m
         ui.label("Lives");
         // A value another tool wrote outside the range is shown as it is,
         // and clamped only when the user changes it.
-        let response = ui.add(
-            DragValue::new(&mut value)
-                .range(LIVES_RANGE)
-                .clamp_existing_to_range(false)
-                .speed(0.25),
-        );
+        let response = ui
+            .add(
+                DragValue::new(&mut value)
+                    .range(LIVES_RANGE)
+                    .clamp_existing_to_range(false)
+                    .speed(0.25),
+            )
+            .on_hover_text(format!(
+                "0 to 255. In game, picking up a life adds one only below {PICKUP_LIVES_MAX}: \
+                 a higher count works, but pickups add nothing until it drops back under it."
+            ));
         if response.changed() {
             *pending = Some(value);
         }
