@@ -433,3 +433,37 @@ fn removals_and_inconsistent_fields_are_spelled_out() {
     assert_eq!(described, ["Flag HintDisplay_99: set"]);
     assert_eq!(changes[0].group(), ChangeGroup::Other);
 }
+
+#[test]
+fn leftover_bytes_as_the_last_level_read_as_unknown() {
+    use nsane::crash3::is_zone_path;
+    use nsane::diff::last_level_text;
+    // The game wrote these bytes when it saved a file that had no last level
+    // before any level was entered (docs/FORMAT.md §6).
+    let after = load("test_saves/round8/l2_after.sav");
+    let leftover = after.previous_level_name().unwrap();
+    assert_eq!(leftover, "`\u{1d}\u{c0}\u{f4}\u{10}");
+    assert!(!is_zone_path(&leftover));
+    assert_eq!(last_level_text(&leftover), "unknown");
+    assert_eq!(last_level_text(""), "none");
+    assert_eq!(
+        last_level_text("crash3/l301_toadvillage/l301_toadvillage"),
+        "Toad Village"
+    );
+    assert_eq!(
+        last_level_text("crash1/l101_nsanitybeach/l101_nsanitybeach"),
+        "crash1/l101_nsanitybeach/l101_nsanitybeach"
+    );
+    for bad in [
+        "toadvillage",
+        "crash3//x",
+        "/crash3",
+        "Crash3/x",
+        "crash3/x y",
+    ] {
+        assert!(!is_zone_path(bad), "{bad}");
+    }
+    let changes = diff(&load("test_saves/round8/l2_pc_to_switch.sav"), &after);
+    let texts: Vec<String> = changes.iter().map(Change::describe).collect();
+    assert_eq!(texts, ["Last level entered: none → unknown"]);
+}

@@ -296,14 +296,17 @@ pub fn story(ui: &mut Ui, doc: &Document) {
         if completed { "yes" } else { "no" }
     ))
     .on_hover_text(format!("Whether {} is defeated", cortex.name()));
-    let last = match save.previous_level_name() {
-        Some(zone) if !zone.is_empty() => match LevelId::from_zone(&zone) {
-            Some(level) => level.name().to_owned(),
-            None => zone,
-        },
-        _ => "none".to_owned(),
-    };
-    ui.label(format!("Last level played: {last}"));
+    let zone = save.previous_level_name().unwrap_or_default();
+    let label = ui.label(format!(
+        "Last level played: {}",
+        nsane::diff::last_level_text(&zone)
+    ));
+    if !zone.is_empty() && !nsane::crash3::is_zone_path(&zone) {
+        label.on_hover_text(
+            "The game stored a few bytes that aren't a level here. It can do that when it \
+             saves before any level was entered. Harmless.",
+        );
+    }
     if save.active_progression_index().is_some_and(|i| i != 0) {
         ui.label("Saved inside a level");
     }

@@ -14,7 +14,9 @@ use crate::crash3::format_time;
 use crate::crash3::tables::{
     BONUS_GEM_KEY, SECRET_ENDING_KEY, bit, cutscene_name, field, relic_counted_level,
 };
-use crate::crash3::{ABILITIES, Ability, Crash3Save, GemColor, Kind, LEVELS, LevelId, Relic};
+use crate::crash3::{
+    ABILITIES, Ability, Crash3Save, GemColor, Kind, LEVELS, LevelId, Relic, is_zone_path,
+};
 
 /// A session field's value, as compared by [`diff`].
 #[derive(Debug, Clone, PartialEq)]
@@ -307,13 +309,24 @@ fn summary_text(key: &str, value: Option<&SummaryValue>) -> String {
         Some(SummaryValue::Int(v)) => v.to_string(),
         Some(SummaryValue::Float(v)) if key == "percent_complete" => format!("{v}%"),
         Some(SummaryValue::Float(v)) => v.to_string(),
-        Some(SummaryValue::Str(s)) => {
-            let s = latin1::decode(s);
-            match LevelId::from_zone(&s) {
-                Some(level) if key == "previous_level_name" => level.name().to_owned(),
-                _ => s,
-            }
+        Some(SummaryValue::Str(s)) if key == "previous_level_name" => {
+            last_level_text(&latin1::decode(s))
         }
+        Some(SummaryValue::Str(s)) => latin1::decode(s),
+    }
+}
+
+/// How the last level entered reads: the level's name, another zone's path,
+/// "none", or "unknown" for leftover bytes that aren't a path.
+pub fn last_level_text(zone: &str) -> String {
+    if zone.is_empty() {
+        "none".to_owned()
+    } else if let Some(level) = LevelId::from_zone(zone) {
+        level.name().to_owned()
+    } else if is_zone_path(zone) {
+        zone.to_owned()
+    } else {
+        "unknown".to_owned()
     }
 }
 

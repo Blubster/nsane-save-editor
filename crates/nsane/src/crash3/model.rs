@@ -487,7 +487,9 @@ impl Crash3Save {
         self.summary_int("life_count").unwrap_or(0)
     }
 
-    /// Zone path of the last zone entered. A fresh save has none.
+    /// Zone path of the last zone entered. A fresh save has none. The game
+    /// can store leftover bytes here instead: see
+    /// [`is_zone_path`](super::is_zone_path).
     pub fn previous_level_name(&self) -> Option<String> {
         match self.igb.summary().get("previous_level_name") {
             Some(SummaryValue::Str(s)) => Some(latin1::decode(s)),

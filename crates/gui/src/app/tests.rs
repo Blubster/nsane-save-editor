@@ -1743,3 +1743,11 @@ fn harness_with_view(view: View) -> Harness<'static, App> {
         ..Options::default()
     }))
 }
+
+#[test]
+fn leftover_bytes_as_the_last_level_show_as_unknown() {
+    let leftover = harness(opening(repo_file("test_saves/round8/l2_after.sav")));
+    leftover.get_by_label("Last level played: unknown");
+    let playthrough = harness(opening(repo_file("saves/0019.sav")));
+    playthrough.get_by_label("Last level played: Toad Village");
+}

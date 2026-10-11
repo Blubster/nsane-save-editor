@@ -522,6 +522,20 @@ const fn rt(key: &str, platinum: u32, gold: u32, sapphire: u32) -> RelicTimes {
     }
 }
 
+/// Whether `text` has the shape of a zone path: parts of lowercase letters,
+/// digits and `_`, separated by `/`, as every zone of every observed save.
+/// The game can write a few leftover bytes as `previous_level_name` instead
+/// of a path (`docs/FORMAT.md` §6); this tells them apart.
+pub fn is_zone_path(text: &str) -> bool {
+    text.contains('/')
+        && text.split('/').all(|part| {
+            !part.is_empty()
+                && part
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+        })
+}
+
 /// Relic thresholds of the 31 levels with a time trial, in [`LEVELS`] order.
 /// The values and the public sources that agree with each one are listed in
 /// `docs/FORMAT.md` §9; Toad Village's gold and sapphire were also shown in
