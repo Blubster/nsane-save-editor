@@ -3,6 +3,7 @@
 mod app;
 #[cfg(not(target_arch = "wasm32"))]
 mod app_icon;
+mod dialog;
 mod gallery;
 mod games;
 mod icons;

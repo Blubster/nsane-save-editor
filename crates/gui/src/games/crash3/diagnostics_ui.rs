@@ -7,8 +7,9 @@ use egui::{Button, Context, Response, RichText, Sense, Ui, Vec2, WidgetInfo, Wid
 use nsane::Document;
 use nsane::crash3::{Diagnostic, LevelId, Severity};
 
-use super::preview::{plural, severity_icon};
+use super::preview::severity_icon;
 use crate::app::Action;
+use crate::dialog::plural;
 use crate::icons::{self, IconState};
 use crate::theme::{self, SPACING};
 
@@ -110,6 +111,7 @@ impl DiagnosticsPanel {
             .id(egui::Id::new("diagnostics-panel"))
             .open(&mut open)
             .collapsible(false)
+            .frame(crate::dialog::window_frame(ctx))
             .default_width(460.0)
             .default_height(420.0)
             .pivot(egui::Align2::RIGHT_TOP)

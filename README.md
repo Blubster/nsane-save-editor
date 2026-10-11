@@ -86,4 +86,6 @@ The save format, with the evidence behind each rule, is documented in [docs/FORM
 
 [MIT](LICENSE).
 
+The interface is set in [Inter](https://rsms.me/inter/), by the Inter Project Authors, under the SIL Open Font License 1.1 ([crates/gui/assets/fonts/OFL.txt](crates/gui/assets/fonts/OFL.txt)).
+
 Fan-made tool, not affiliated with or endorsed by Activision or Vicarious Visions. Crash Bandicoot is a trademark of Activision.

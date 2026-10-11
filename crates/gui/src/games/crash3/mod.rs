@@ -21,6 +21,7 @@ use nsane::Document;
 use nsane::crash3::LevelId;
 
 use crate::app::Action;
+use crate::dialog;
 use crate::theme::SPACING;
 
 /// What the central area shows.
@@ -170,18 +171,15 @@ impl Crash3Ui {
             .auto_shrink([false, true])
             .show(ui, |ui| {
                 ui.heading("Overview");
-                ui.add_space(SPACING);
+                ui.add_space(SPACING / 2.0);
                 overview::progress(ui, &totals);
-                ui.add_space(SPACING);
+                dialog::section(ui, "Collected");
                 overview::totals(ui, doc, &totals);
-                ui.separator();
+                dialog::section(ui, "Lives and bonus gem");
                 overview::lives(ui, doc, &mut self.lives, actions);
                 overview::bonus_gem(ui, doc, actions);
-                ui.separator();
                 overview::secret_room(ui, &totals, selected);
-                ui.separator();
                 overview::story(ui, doc);
-                ui.separator();
                 overview::diagnostics(ui, doc, &mut self.diagnostics.open);
             });
     }

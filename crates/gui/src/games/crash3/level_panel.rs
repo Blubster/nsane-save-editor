@@ -5,9 +5,8 @@
 //! is what the user is typing and the reset question.
 
 use egui::{
-    Button, CollapsingHeader, CornerRadius, Grid, Key, Modal, Rect, Response, RichText, Sense,
-    Stroke, StrokeKind, TextEdit, TextStyle, TextWrapMode, Ui, Vec2, WidgetInfo, WidgetText,
-    WidgetType,
+    Button, CollapsingHeader, CornerRadius, Grid, Key, Rect, Response, RichText, Sense, Stroke,
+    StrokeKind, TextEdit, TextStyle, TextWrapMode, Ui, Vec2, WidgetInfo, WidgetText, WidgetType,
 };
 use nsane::Document;
 use nsane::crash3::presets::matching_time;
@@ -23,6 +22,7 @@ use nsane::igb::FieldValue;
 use super::level_row::{self, push};
 use super::rooms;
 use crate::app::{Action, static_icon};
+use crate::dialog::{self, Dialog};
 use crate::icons::{self, Boss, Icon, IconState};
 use crate::theme::{self, SPACING};
 
@@ -140,7 +140,7 @@ impl LevelPanel {
         let relic = save.relic(level);
         let times = save.times(level);
 
-        ui.strong("Time trial");
+        dialog::section(ui, "Time trial");
         ui.add_space(SPACING / 2.0);
         relic_selector(ui, doc, level, actions);
         ui.add_space(SPACING);
@@ -157,7 +157,7 @@ impl LevelPanel {
         let pal = theme::palette(ui.visuals().dark_mode);
         for (slot, buffer) in self.times.iter().enumerate() {
             if let Some(e) = buffer.as_ref().and_then(|b| b.error.as_deref()) {
-                ui.colored_label(pal.error.base, format!("Time {}: {e}", slot + 1));
+                ui.colored_label(pal.error_text, format!("Time {}: {e}", slot + 1));
             }
         }
         ui.weak("Times are kept sorted, best first.")
@@ -317,33 +317,32 @@ impl LevelPanel {
             return;
         };
         let mut close = false;
-        Modal::new(egui::Id::new("reset-level")).show(ui.ctx(), |ui| {
-            ui.set_max_width(400.0);
-            ui.heading("Reset level");
-            ui.add_space(SPACING);
-            ui.label(reset_question(level));
-            if level.level().kind == Kind::Boss {
-                ui.label("The ability and the story scenes are kept.");
-            }
-            if !RESET_LEVEL_VERIFIED {
-                ui.add_space(SPACING / 2.0);
-                ui.horizontal(|ui| {
-                    static_icon(ui, Icon::Warning, theme::ICON_SMALL);
-                    ui.label("Not yet tested in game.");
-                });
-            }
-            ui.add_space(SPACING);
-            ui.horizontal(|ui| {
-                if danger_button(ui, "Reset").clicked() {
+        let shown = Dialog::new("reset-level", "Reset level").width(420.0).show(
+            ui.ctx(),
+            |ui| {
+                dialog::wrapped(ui, reset_question(level));
+                if level.level().kind == Kind::Boss {
+                    dialog::wrapped(ui, "The ability and the story scenes are kept.");
+                }
+                if !RESET_LEVEL_VERIFIED {
+                    ui.add_space(SPACING / 2.0);
+                    ui.horizontal(|ui| {
+                        static_icon(ui, Icon::Warning, theme::ICON_SMALL);
+                        ui.label("Not yet tested in game.");
+                    });
+                }
+            },
+            |ui, _| {
+                if ui.add(theme::danger_button(ui, "Reset")).clicked() {
                     push(actions, doc, Edit::ResetLevel { level });
                     close = true;
                 }
-                if ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(Key::Escape)) {
+                if ui.button("Cancel").clicked() {
                     close = true;
                 }
-            });
-        });
-        if close {
+            },
+        );
+        if close || shown.cancelled {
             self.confirm_reset = None;
         }
     }
@@ -463,7 +462,7 @@ fn collectible(
 fn collectibles(ui: &mut Ui, doc: &Document, level: LevelId, actions: &mut Vec<Action>) {
     let save = doc.current();
     let info = level.level();
-    ui.strong("Collectibles");
+    dialog::section(ui, "Collectibles");
     ui.add_space(SPACING / 2.0);
     if info.has_crystal() {
         let item = (Icon::Crystal, "Crystal".to_owned(), save.crystal(level));
@@ -540,8 +539,11 @@ fn relic_selector(ui: &mut Ui, doc: &Document, level: LevelId, actions: &mut Vec
     ];
     Grid::new(("relic", level))
         .num_columns(4)
-        .spacing(Vec2::new(10.0, 2.0))
+        .spacing(Vec2::new(4.0, 2.0))
         .show(ui, |ui| {
+            // Compact, so that the panel keeps its width whatever the
+            // thresholds: a wider panel would narrow the warp room grid.
+            ui.spacing_mut().button_padding.x = 6.0;
             for choice in choices {
                 let name = choice.map_or("None", Relic::name);
                 let tip = match choice {
@@ -568,10 +570,11 @@ fn relic_selector(ui: &mut Ui, doc: &Document, level: LevelId, actions: &mut Vec
             }
             ui.end_row();
             for choice in choices {
-                match choice {
-                    Some(r) => ui.weak(format!("< {}", format_time(thresholds.threshold(r)))),
-                    None => ui.weak(""),
+                let text = match choice {
+                    Some(r) => format!("< {}", format_time(thresholds.threshold(r))),
+                    None => String::new(),
                 };
+                ui.label(RichText::new(text).weak().small());
             }
             ui.end_row();
         });
@@ -580,7 +583,7 @@ fn relic_selector(ui: &mut Ui, doc: &Document, level: LevelId, actions: &mut Vec
 /// The defeat, the ability and the story scenes of a boss.
 fn boss(ui: &mut Ui, doc: &Document, level: LevelId, actions: &mut Vec<Action>) {
     let save = doc.current();
-    ui.strong("Boss");
+    dialog::section(ui, "Boss");
     ui.add_space(SPACING / 2.0);
     if let Some(b) = Boss::of(level) {
         let defeated = save.boss_defeated(level);
@@ -620,7 +623,7 @@ fn boss(ui: &mut Ui, doc: &Document, level: LevelId, actions: &mut Vec<Action>) 
         return;
     };
     ui.add_space(SPACING);
-    ui.strong("Story scenes").on_hover_text(
+    dialog::section(ui, "Story scenes").on_hover_text(
         "The hub scenes that play between the previous boss's defeat and this one's. \
          A scene marked as seen doesn't play.",
     );
@@ -642,7 +645,7 @@ fn boss(ui: &mut Ui, doc: &Document, level: LevelId, actions: &mut Vec<Action>) 
 /// What the save records about the level, read-only.
 fn stats(ui: &mut Ui, save: &Crash3Save, level: LevelId) {
     let yes_no = |b: bool| if b { "yes" } else { "no" };
-    ui.strong("Stats");
+    dialog::section(ui, "Stats");
     ui.add_space(SPACING / 2.0);
     Grid::new(("stats", level))
         .num_columns(2)
@@ -736,12 +739,6 @@ fn field_text(save: &Crash3Save, index: usize, value: &FieldValue) -> String {
     }
 }
 
-/// A button in the error colour, for actions that remove progress.
-fn danger_button(ui: &mut Ui, text: &str) -> Response {
-    let pal = theme::palette(ui.visuals().dark_mode);
-    ui.add(Button::new(RichText::new(text).color(pal.glyph_light)).fill(pal.error.base))
-}
-
 /// The reset button. Returns whether it was clicked.
 fn reset_button(ui: &mut Ui, level: LevelId) -> bool {
     let mut tip = format!(
@@ -751,7 +748,8 @@ fn reset_button(ui: &mut Ui, level: LevelId) -> bool {
     if !RESET_LEVEL_VERIFIED {
         tip += " Not yet tested in game.";
     }
-    let clicked = danger_button(ui, "Reset level…")
+    let clicked = ui
+        .add(theme::danger_button(ui, "Reset level…"))
         .on_hover_text(tip)
         .clicked();
     if !RESET_LEVEL_VERIFIED {

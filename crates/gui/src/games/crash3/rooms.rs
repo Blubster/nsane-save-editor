@@ -1,8 +1,8 @@
 //! The warp room grid: one card per room, a row per level and boss.
 
 use egui::{
-    Align, Frame, Layout, Margin, RichText, ScrollArea, Sense, Stroke, Ui, Vec2, WidgetInfo,
-    WidgetType,
+    Align, Color32, Frame, Layout, Margin, RichText, ScrollArea, Sense, Shadow, Stroke, Ui, Vec2,
+    WidgetInfo, WidgetType,
 };
 use nsane::Document;
 use nsane::crash3::tables::SecretRoomLevel;
@@ -45,8 +45,11 @@ pub fn grid(
         let columns = columns_for(ui.available_width());
         let rooms: Vec<u8> = (1..=6).collect();
         for chunk in rooms.chunks(columns) {
+            // The gutter between columns is the item spacing.
+            ui.spacing_mut().item_spacing.x = CARD_GAP;
             ui.columns(columns, |cols| {
                 for (ui, &room) in cols.iter_mut().zip(chunk) {
+                    ui.spacing_mut().item_spacing = theme::ITEM_SPACING;
                     card(ui, |ui| {
                         if room == 6 {
                             secret_card(ui, doc, selected, actions);
@@ -56,18 +59,33 @@ pub fn grid(
                     });
                 }
             });
-            ui.add_space(CARD_GAP);
+            ui.spacing_mut().item_spacing = theme::ITEM_SPACING;
+            ui.add_space(CARD_GAP - theme::ITEM_SPACING.y);
         }
     });
 }
 
+/// Inside a card.
+pub const CARD_PADDING: i8 = 12;
+
 pub fn card(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
     let pal = theme::palette(ui.visuals().dark_mode);
+    let shadow = if pal.dark {
+        Shadow::NONE
+    } else {
+        Shadow {
+            offset: [0, 1],
+            blur: 3,
+            spread: 0,
+            color: Color32::from_black_alpha(18),
+        }
+    };
     Frame::new()
         .fill(pal.surface)
-        .stroke(Stroke::new(1.0, pal.faint))
-        .corner_radius(theme::ROUNDING)
-        .inner_margin(Margin::same(8))
+        .stroke(Stroke::new(1.0, pal.border))
+        .corner_radius(theme::ROUNDING + 2)
+        .shadow(shadow)
+        .inner_margin(Margin::same(CARD_PADDING))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             add(ui);
@@ -77,7 +95,7 @@ pub fn card(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
 /// "Warp Room N", its lock and the right-hand summary.
 fn header(ui: &mut Ui, title: &str, open: bool, lock_tip: &str, right: impl FnOnce(&mut Ui)) {
     ui.horizontal(|ui| {
-        ui.label(RichText::new(title).strong().size(theme::FONT_BODY + 2.0));
+        ui.label(theme::bold(title).size(theme::FONT_TITLE));
         let lock = if open { Icon::Unlock } else { Icon::Lock };
         static_icon(ui, lock, theme::ICON_SMALL).on_hover_text(lock_tip);
         ui.with_layout(Layout::right_to_left(Align::Center), right);

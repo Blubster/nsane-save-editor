@@ -34,7 +34,8 @@ web-sys.workspace = true
 winresource = "0.1.31"
 
 [dev-dependencies]
-egui_kittest.workspace = true
+# wgpu: the renders of `app/renders.rs`
+egui_kittest = { workspace = true, features = ["wgpu"] }
 serde_json.workspace = true
 sha2.workspace = true
 

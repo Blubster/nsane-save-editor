@@ -16,15 +16,15 @@ use crate::theme;
 /// Icon size in a row.
 pub const ICON: f32 = 20.0;
 /// The level number, right-aligned.
-pub const NUMBER_WIDTH: f32 = 22.0;
+pub const NUMBER_WIDTH: f32 = 20.0;
 /// The best time, right-aligned.
-pub const TIME_WIDTH: f32 = 56.0;
+pub const TIME_WIDTH: f32 = 50.0;
 /// Icon slots after the name: crystal, clear gem, second gem, colored gem,
 /// relic. A collectible a level doesn't have leaves its slot empty, so the
 /// columns line up.
 pub const SLOTS: usize = 5;
 /// Horizontal space between the pieces of a row.
-const GAP: f32 = 4.0;
+const GAP: f32 = 3.0;
 
 /// Width taken by the icon slots and the time, after the name.
 pub fn trailing_width() -> f32 {
@@ -98,7 +98,7 @@ pub fn name(ui: &mut Ui, doc: &Document, level: LevelId, selected: &mut Option<L
     let text = if entered {
         RichText::new(level.name())
     } else {
-        RichText::new(level.name()).color(theme::palette(ui.visuals().dark_mode).muted)
+        RichText::new(level.name()).color(theme::palette(ui.visuals().dark_mode).text_weak)
     };
     let tip = if entered {
         format!("Show the details of {}", level.name())
@@ -115,6 +115,8 @@ pub fn name(ui: &mut Ui, doc: &Document, level: LevelId, selected: &mut Option<L
 pub fn name_button(ui: &mut Ui, is_selected: bool, text: RichText, tip: &str) -> bool {
     let width = (ui.available_width() - trailing_width() - GAP).max(40.0);
     fixed(ui, width, Layout::left_to_right(Align::Center), |ui| {
+        // Narrow padding: the name keeps the room it can.
+        ui.spacing_mut().button_padding.x = 5.0;
         ui.add(Button::selectable(is_selected, text).truncate())
             .on_hover_text(tip)
             .clicked()

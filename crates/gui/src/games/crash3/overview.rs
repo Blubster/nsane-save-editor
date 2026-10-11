@@ -15,8 +15,9 @@ use nsane::crash3::{
 use super::level_row;
 use super::rooms;
 use crate::app::{Action, static_icon};
+use crate::dialog;
 use crate::icons::{self, Boss, Icon, IconState};
-use crate::theme;
+use crate::theme::{self, SPACING};
 
 /// The range the editor writes, as the lives edit accepts it.
 const LIVES_RANGE: std::ops::RangeInclusive<i32> = 0..=255;
@@ -72,7 +73,7 @@ pub fn lives(ui: &mut Ui, doc: &Document, pending: &mut Option<i32>, actions: &m
 pub fn progress(ui: &mut Ui, totals: &Totals) {
     let percent = totals.percent();
     ui.horizontal(|ui| {
-        ui.label(RichText::new(format!("{percent}%")).size(32.0).strong());
+        ui.label(theme::bold(format!("{percent}%")).size(32.0));
         ui.with_layout(Layout::right_to_left(Align::Max), |ui| {
             ui.weak(format!("of {MAX_PERCENT}%"));
         });
@@ -98,7 +99,7 @@ fn count_row(ui: &mut Ui, icon: Icon, name: &str, count: String, tip: String) {
         static_icon(ui, icon, theme::ICON_MEDIUM);
         ui.label(name);
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            ui.label(RichText::new(count).strong());
+            ui.label(theme::bold(count));
         });
     })
     .response
@@ -130,7 +131,7 @@ pub fn totals(ui: &mut Ui, doc: &Document, totals: &Totals) {
         static_icon(ui, Icon::Relic(Relic::Gold), theme::ICON_MEDIUM);
         ui.label("Relics");
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            ui.label(RichText::new(format!("{} / {MAX_RELICS}", totals.relics())).strong());
+            ui.label(theme::bold(format!("{} / {MAX_RELICS}", totals.relics())));
         });
     });
     ui.horizontal(|ui| {
@@ -148,7 +149,7 @@ pub fn totals(ui: &mut Ui, doc: &Document, totals: &Totals) {
     ui.horizontal(|ui| {
         ui.label("Bosses");
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            ui.label(RichText::new(format!("{} / {MAX_BOSSES}", totals.bosses)).strong());
+            ui.label(theme::bold(format!("{} / {MAX_BOSSES}", totals.bosses)));
         });
     });
     ui.horizontal(|ui| {
@@ -215,7 +216,7 @@ pub fn bonus_gem(ui: &mut Ui, doc: &Document, actions: &mut Vec<Action>) {
 fn badge(ui: &mut Ui, text: &str, color: egui::Color32) -> egui::Response {
     let pal = theme::palette(ui.visuals().dark_mode);
     egui::Frame::new()
-        .fill(theme::mix(color, pal.background, 80))
+        .fill(theme::mix(color, pal.chrome, 82))
         .stroke(Stroke::new(1.0, color))
         .corner_radius(theme::ROUNDING_SMALL)
         .inner_margin(egui::Margin::symmetric(6, 1))
@@ -228,7 +229,7 @@ fn badge(ui: &mut Ui, text: &str, color: egui::Color32) -> egui::Response {
 /// The relic count against the secret room's thresholds, and its levels.
 pub fn secret_room(ui: &mut Ui, totals: &Totals, selected: &mut Option<LevelId>) {
     let relics = totals.relics();
-    ui.label(RichText::new("Secret warp room").strong());
+    dialog::section(ui, "Secret warp room");
     relic_bar(ui, relics);
     rooms::secret_room_list(ui, relics, selected);
 }
@@ -246,7 +247,7 @@ fn bar(ui: &Ui, rect: egui::Rect, fraction: f32, color: egui::Color32) {
     painter.rect_stroke(
         rect,
         theme::ROUNDING_SMALL,
-        Stroke::new(1.0, pal.faint),
+        Stroke::new(1.0, pal.border),
         egui::StrokeKind::Inside,
     );
 }
@@ -267,7 +268,7 @@ fn relic_bar(ui: &mut Ui, relics: u32) {
         let color = if relics >= u32::from(entry.relics) {
             pal.text
         } else {
-            pal.muted
+            pal.text_weak
         };
         painter.line_segment(
             [
@@ -293,6 +294,7 @@ fn relic_bar(ui: &mut Ui, relics: u32) {
 /// Story completion, the last level played and whether the save was made
 /// inside a level.
 pub fn story(ui: &mut Ui, doc: &Document) {
+    dialog::section(ui, "Story");
     let save = doc.current();
     let cortex = BOSSES[BOSSES.len() - 1];
     // Counted from the boss, like the other totals: the stored value is only
@@ -323,8 +325,9 @@ pub fn story(ui: &mut Ui, doc: &Document) {
 /// messages.
 pub fn diagnostics(ui: &mut Ui, doc: &Document, open_panel: &mut bool) {
     let all = doc.diagnostics();
+    ui.add_space(SPACING);
     ui.horizontal(|ui| {
-        ui.label(RichText::new("Diagnostics").strong());
+        ui.label(theme::bold("Diagnostics").size(theme::FONT_TITLE));
         if super::diagnostics_ui::badges(ui, all) {
             *open_panel = true;
         }

@@ -3,7 +3,7 @@
 //! live preview of what it changes. Apply is one undo step, labelled with
 //! the preset and its options.
 
-use egui::{Button, Id, Key, Modal, RichText, Ui};
+use egui::{RichText, Ui};
 use nsane::Document;
 use nsane::crash3::presets::{
     self, AllRelics, CompleteAll, DEFAULT_ABILITIES_ON, DEFAULT_ALL_RELICS_TIER,
@@ -14,7 +14,8 @@ use nsane::crash3::{ABILITIES, BOSSES, Crash3Save, Edit, EditError, Relic, forma
 use super::level_panel::parse_slot;
 use super::preview::{self, Previewed};
 use crate::app::Action;
-use crate::theme::{self, SPACING};
+use crate::dialog::{self, Dialog, option_group, wrapped};
+use crate::theme;
 
 /// The width a preset dialog keeps to.
 const DIALOG_WIDTH: f32 = 480.0;
@@ -60,6 +61,19 @@ impl Preset {
             Preset::AllRelics { .. } => "All relics at a tier…",
             Preset::AllAbilities { .. } => "All super powers on or off…",
             Preset::AllCutscenes { .. } => "Skip all story scenes…",
+        }
+    }
+
+    /// The title of its dialog, with the options that change it.
+    pub fn title(&self) -> String {
+        match self {
+            Preset::CompleteAll(_) => "Complete everything (108%)".to_owned(),
+            Preset::StoryUpTo { room, .. } => format!("Story up to warp room {room}"),
+            Preset::AllRelics { tier, .. } => {
+                format!("All relics at {}", tier.name().to_lowercase())
+            }
+            Preset::AllAbilities { .. } => "All super powers".to_owned(),
+            Preset::AllCutscenes { .. } => "All story scenes".to_owned(),
         }
     }
 
@@ -217,50 +231,48 @@ impl Presets {
     }
 
     pub fn dialog(&mut self, ctx: &egui::Context, doc: &Document, actions: &mut Vec<Action>) {
-        let Some(dialog) = &mut self.dialog else {
+        let Some(open) = &mut self.dialog else {
             return;
         };
-        let preset = dialog.preset;
-        let ran = Previewed::refresh(&mut dialog.computed, doc, &preset, |save| {
-            preset.edits(save)
-        });
+        let preset = open.preset;
+        let ran = Previewed::refresh(&mut open.computed, doc, &preset, |save| preset.edits(save));
         #[cfg(test)]
         {
-            dialog.runs += usize::from(ran);
+            open.runs += usize::from(ran);
         }
         #[cfg(not(test))]
         let _ = ran;
-        let Some(computed) = &dialog.computed else {
+        let Some(computed) = &open.computed else {
             return;
         };
 
-        let mut preset = dialog.preset;
+        let mut preset = open.preset;
         let mut close = false;
         let mut apply = false;
-        Modal::new(Id::new("preset")).show(ctx, |ui| {
-            ui.set_max_width(DIALOG_WIDTH);
-            let time_error = options(ui, &mut preset, &mut dialog.fixed_text);
-            ui.separator();
-            let can_apply = preview::show(ui, doc, computed) && time_error.is_none();
-            ui.add_space(SPACING);
-            ui.horizontal(|ui| {
-                let response = ui.add_enabled(can_apply, Button::new("Apply"));
-                let response = match &time_error {
-                    Some(e) => response.on_disabled_hover_text(e.as_str()),
-                    None => response,
-                };
-                if response.clicked() {
-                    apply = true;
-                }
-                if ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(Key::Escape)) {
-                    close = true;
-                }
-            });
-        });
-        if preset != dialog.preset {
+        let fixed_text = &mut open.fixed_text;
+        let shown = Dialog::new("preset", preset.title())
+            .width(DIALOG_WIDTH)
+            .show(
+                ctx,
+                |ui| {
+                    let time_error = options(ui, &mut preset, fixed_text);
+                    let can_apply = preview::show(ui, doc, computed) && time_error.is_none();
+                    (can_apply, time_error)
+                },
+                |ui, (can_apply, time_error)| {
+                    if dialog::primary(ui, "Apply", *can_apply, time_error.as_deref()).clicked() {
+                        apply = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        close = true;
+                    }
+                },
+            );
+        close |= shown.cancelled;
+        if preset != open.preset {
             // The preview no longer matches the options: it runs again on
             // the next frame.
-            dialog.preset = preset;
+            open.preset = preset;
             ctx.request_repaint();
         } else if apply {
             actions.push(Action::Apply {
@@ -275,38 +287,25 @@ impl Presets {
     }
 }
 
-fn wrapped(ui: &mut Ui, text: impl Into<egui::WidgetText>) {
-    ui.add(egui::Label::new(text).wrap());
-}
-
 /// The options of `preset`. Returns why the fixed time can't be used, if
 /// it is chosen and doesn't parse.
 fn options(ui: &mut Ui, preset: &mut Preset, fixed_text: &mut String) -> Option<String> {
     let mut time_error = None;
     match preset {
         Preset::CompleteAll(o) => {
-            ui.heading("Complete everything (108%)");
-            ui.add_space(SPACING);
             wrapped(
                 ui,
                 "Every crystal, clear, second and colored gem, a platinum relic on every \
                  level, every boss defeated, every super power on and the bonus gem.",
             );
-            ui.add_space(SPACING / 2.0);
             time_error = time_policy(ui, &mut o.times, fixed_text);
-            ui.checkbox(&mut o.skip_cutscenes, "Skip the bosses' story scenes")
-                .on_hover_text(SKIP_TIP);
+            dialog::section(ui, "Story scenes");
+            option_group(ui, |ui| {
+                ui.checkbox(&mut o.skip_cutscenes, "Skip the bosses' story scenes")
+                    .on_hover_text(SKIP_TIP);
+            });
         }
         Preset::StoryUpTo { room, options: o } => {
-            ui.heading(format!("Story up to warp room {room}"));
-            ui.add_space(SPACING);
-            ui.horizontal(|ui| {
-                ui.label("Up to warp room");
-                for r in 1..=5u8 {
-                    ui.radio_value(room, r, r.to_string())
-                        .on_hover_text(format!("Defeat {}", BOSSES[usize::from(r) - 1].name()));
-                }
-            });
             let n = usize::from(*room);
             let after = match *room {
                 5 => "which ends the story".to_owned(),
@@ -320,56 +319,69 @@ fn options(ui: &mut Ui, preset: &mut Preset, fixed_text: &mut String) -> Option<
                     BOSSES[n - 1].name()
                 ),
             );
-            ui.add_space(SPACING / 2.0);
-            ui.checkbox(
-                &mut o.with_gems,
-                "Also their gems (clear, second and colored)",
-            );
             let powers: Vec<&str> = ABILITIES[..n].iter().map(|a| a.name()).collect();
-            ui.checkbox(
-                &mut o.with_abilities,
-                "Grant the abilities of the defeated bosses",
-            )
-            .on_hover_text(powers.join(", "));
-            ui.checkbox(&mut o.skip_cutscenes, "Skip their story scenes")
-                .on_hover_text(SKIP_TIP);
+            dialog::section(ui, "Up to warp room");
+            option_group(ui, |ui| {
+                ui.horizontal(|ui| {
+                    for r in 1..=5u8 {
+                        ui.radio_value(room, r, r.to_string())
+                            .on_hover_text(format!("Defeat {}", BOSSES[usize::from(r) - 1].name()));
+                    }
+                });
+            });
+            dialog::section(ui, "Options");
+            option_group(ui, |ui| {
+                ui.checkbox(
+                    &mut o.with_gems,
+                    "Also their gems (clear, second and colored)",
+                );
+                ui.checkbox(
+                    &mut o.with_abilities,
+                    "Grant the abilities of the defeated bosses",
+                )
+                .on_hover_text(powers.join(", "));
+                ui.checkbox(&mut o.skip_cutscenes, "Skip their story scenes")
+                    .on_hover_text(SKIP_TIP);
+            });
         }
         Preset::AllRelics { tier, options: o } => {
-            ui.heading(format!("All relics at {}", tier.name().to_lowercase()));
-            ui.add_space(SPACING);
-            ui.horizontal(|ui| {
-                ui.label("Relic");
-                for relic in Relic::ALL {
-                    ui.radio_value(tier, relic, relic.name());
-                }
+            dialog::section(ui, "Relic");
+            option_group(ui, |ui| {
+                ui.horizontal(|ui| {
+                    for relic in Relic::ALL {
+                        ui.radio_value(tier, relic, relic.name());
+                    }
+                });
+                ui.checkbox(&mut o.only_upgrade, "Never replace a better relic");
             });
-            ui.checkbox(&mut o.only_upgrade, "Never replace a better relic");
             time_error = time_policy(ui, &mut o.times, fixed_text);
         }
         Preset::AllAbilities { on } => {
-            ui.heading("All super powers");
-            ui.add_space(SPACING);
             wrapped(
                 ui,
                 "The five super powers work on their own, even before their boss is \
                  defeated.",
             );
-            ui.horizontal(|ui| {
-                ui.radio_value(on, true, "On");
-                ui.radio_value(on, false, "Off");
+            dialog::section(ui, "Super powers");
+            option_group(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.radio_value(on, true, "On");
+                    ui.radio_value(on, false, "Off");
+                });
             });
         }
         Preset::AllCutscenes { seen } => {
-            ui.heading("All story scenes");
-            ui.add_space(SPACING);
             wrapped(
                 ui,
                 "A scene marked as seen doesn't play. Scenes not seen play the next time \
                  their moment comes, which is harmless.",
             );
-            ui.horizontal(|ui| {
-                ui.radio_value(seen, true, "Seen (won't play)");
-                ui.radio_value(seen, false, "Not seen");
+            dialog::section(ui, "Story scenes");
+            option_group(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.radio_value(seen, true, "Seen (won't play)");
+                    ui.radio_value(seen, false, "Not seen");
+                });
             });
         }
     }
@@ -387,9 +399,10 @@ fn time_policy(ui: &mut Ui, policy: &mut TimePolicy, fixed_text: &mut String) ->
         Ok(None) => Err("Type a time, such as 1:00.00.".to_owned()),
         Err(e) => Err(e),
     };
-    ui.label("Times");
+    dialog::section(ui, "Times");
+    let pal = theme::palette(ui.visuals().dark_mode);
     let mut error = None;
-    ui.indent("times", |ui| {
+    option_group(ui, |ui| {
         ui.radio_value(
             policy,
             TimePolicy::Matching,
@@ -402,10 +415,9 @@ fn time_policy(ui: &mut Ui, policy: &mut TimePolicy, fixed_text: &mut String) ->
             if ui.radio(fixed, "Write this time on every level:").clicked() && !fixed {
                 *policy = TimePolicy::Fixed(*parsed.as_ref().unwrap_or(&DEFAULT_FIXED_TIME));
             }
-            let pal = theme::palette(ui.visuals().dark_mode);
             let mut edit = egui::TextEdit::singleline(fixed_text).desired_width(80.0);
             if fixed && parsed.is_err() {
-                edit = edit.text_color(pal.error.base);
+                edit = edit.text_color(pal.error_text);
             }
             let response = ui.add_enabled(fixed, edit);
             if response.changed()
@@ -414,10 +426,12 @@ fn time_policy(ui: &mut Ui, policy: &mut TimePolicy, fixed_text: &mut String) ->
                 *policy = TimePolicy::Fixed(cs);
             }
             if let (true, Err(e)) = (fixed, &parsed) {
-                ui.label(RichText::new(e.as_str()).color(pal.error.base).small());
                 error = Some(e.clone());
             }
         });
+        if let Some(e) = &error {
+            wrapped(ui, RichText::new(e.as_str()).color(pal.error_text).small());
+        }
         ui.radio_value(policy, TimePolicy::Clear, "Clear the times");
     });
     error

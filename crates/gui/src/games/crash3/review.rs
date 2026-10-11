@@ -1,13 +1,13 @@
 //! The review shown before saving: every change since the file was opened,
 //! the summary values writing recomputes, and the warnings and errors left.
 
-use egui::{RichText, ScrollArea, Ui};
+use egui::Ui;
 use nsane::Document;
 use nsane::crash3::{Diagnostic, Severity};
 use nsane::diff::{Change, ReviewRow};
 
-use super::preview::{diagnostic_lines, grouped_rows};
-use crate::theme::SPACING;
+use super::preview::{diagnostic_lines, groups};
+use crate::dialog;
 
 /// The tallest the change list gets before it scrolls.
 const ROWS_HEIGHT: f32 = 300.0;
@@ -40,30 +40,25 @@ impl SaveReview {
         }
     }
 
-    pub fn show(&self, ui: &mut Ui, file_name: &str) {
-        ui.label(format!("Changes since {file_name} was opened:"));
-        if self.rows.is_empty() {
-            ui.weak("None: the save is as it was opened.");
-        } else {
-            ScrollArea::vertical()
-                .max_height(ROWS_HEIGHT)
-                .auto_shrink([false, true])
-                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
-                .show(ui, |ui| grouped_rows(ui, &self.rows));
-        }
+    pub fn show(&self, ui: &mut Ui) {
+        let mut groups = groups(&self.rows);
         if !self.recomputed.is_empty() {
-            ui.add_space(SPACING / 2.0);
-            ui.label(RichText::new("Recomputed when saving").underline())
-                .on_hover_text("The values the save slot screen shows, counted from the save");
-            for change in &self.recomputed {
-                ui.label(format!("• {}", change.describe()));
-            }
+            // The values the save slot screen shows, counted from the save.
+            groups.push(dialog::Group {
+                title: "Recomputed when saving".to_owned(),
+                rows: self.recomputed.iter().map(Change::describe).collect(),
+            });
         }
-        ui.add_space(SPACING / 2.0);
-        if self.diagnostics.is_empty() {
-            ui.weak("No warnings.");
+        if groups.is_empty() {
+            dialog::note(ui, "No changes: the save is as it was opened.");
         } else {
-            ui.label(RichText::new("Warnings").underline());
+            dialog::changes(ui, "save-review", &groups, &[], ROWS_HEIGHT);
+        }
+        if self.diagnostics.is_empty() {
+            ui.add_space(crate::theme::SPACING / 2.0);
+            dialog::note(ui, "No warnings.");
+        } else {
+            dialog::section(ui, "Warnings");
             diagnostic_lines(ui, &self.diagnostics);
         }
     }

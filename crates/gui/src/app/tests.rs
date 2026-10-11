@@ -38,10 +38,33 @@ fn opening_options(rel: &str) -> Options {
     }
 }
 
+/// A harness of `app` with the app's fonts and theme. The app styled the
+/// throwaway context it was made with, so the first frame styles the
+/// harness's own context and draws nothing: fonts apply on the next pass.
+pub(super) fn themed(
+    builder: egui_kittest::HarnessBuilder<App>,
+    app: App,
+) -> Harness<'static, App> {
+    let mut styled = false;
+    let mut harness = builder.build_ui_state(
+        move |ui, app: &mut App| {
+            if styled {
+                app.show(ui);
+            } else {
+                theme::fonts(ui.ctx());
+                theme::apply(ui.ctx(), app.dark);
+                ui.ctx().request_repaint();
+                styled = true;
+            }
+        },
+        app,
+    );
+    harness.run_steps(1);
+    harness
+}
+
 fn harness(app: App) -> Harness<'static, App> {
-    let mut harness = Harness::builder()
-        .with_size(Vec2::new(1280.0, 800.0))
-        .build_ui_state(|ui, app: &mut App| app.show(ui), app);
+    let mut harness = themed(Harness::builder().with_size(Vec2::new(1280.0, 800.0)), app);
     harness.run_steps(2);
     harness
 }
@@ -95,7 +118,7 @@ fn confirm_review(harness: &mut Harness<'_, App>) {
         matches!(harness.state().dialog, Some(Dialog::Review { .. })),
         "the review is shown"
     );
-    harness.run_steps(4); // a modal takes a few frames to reach its size
+    harness.run_steps(1); // its first frame only measures it
     harness.get_by_label("Save file").click();
     harness.run_steps(2);
     assert!(harness.state().dialog.is_none());
@@ -578,9 +601,7 @@ fn sizes_in_kb() {
 
 /// A window tall enough to show every warp room card without scrolling.
 fn tall_harness(app: App) -> Harness<'static, App> {
-    let mut harness = Harness::builder()
-        .with_size(Vec2::new(1280.0, 1400.0))
-        .build_ui_state(|ui, app: &mut App| app.show(ui), app);
+    let mut harness = themed(Harness::builder().with_size(Vec2::new(1280.0, 1400.0)), app);
     harness.run_steps(2);
     harness
 }
@@ -905,14 +926,15 @@ fn fill_a_time_and_set_the_relic_from_the_best_time() {
 
 #[test]
 fn reset_asks_first_and_undo_restores_the_level() {
-    let mut harness = harness(app(selecting(
+    // Tall: the reset button is at the end of the details.
+    let mut harness = tall_harness(app(selecting(
         "tests/saves/after_edit/t6_after.sav",
         "deeptrouble",
     )));
     let deep = level("deeptrouble");
     let before = doc(&harness).current().totals();
     assert!(doc(&harness).current().entered(deep));
-    click(&mut harness, "Reset level…");
+    open_dialog(&mut harness, "Reset level…");
     harness.get_by_label(
         "Reset Deep Trouble to never played? Removes its crystal, gems, relic and times.",
     );
@@ -920,7 +942,7 @@ fn reset_asks_first_and_undo_restores_the_level() {
     click(&mut harness, "Cancel");
     assert!(history(&harness).is_empty());
 
-    click(&mut harness, "Reset level…");
+    open_dialog(&mut harness, "Reset level…");
     click(&mut harness, "Reset");
     assert_eq!(history(&harness), ["Deep Trouble: reset to never played"]);
     let save = doc(&harness).current();
@@ -971,17 +993,23 @@ fn the_invalid_time_view_shows_a_refused_entry() {
 
 // ------------------------------------------------------------ progress tab
 
-fn progress_harness(rel: &str) -> Harness<'static, App> {
-    let mut harness = tall_harness(opening(repo_file(rel)));
-    click(&mut harness, "Progress");
-    harness
-}
-
-/// Clicks a button that opens a dialog, and lets the dialog settle: a
-/// modal takes a few frames to reach its size.
+/// Clicks a button that opens a dialog. The dialog appears the frame after
+/// the click, and its first frame only measures it: one more step. It keeps
+/// its place afterwards, whatever its content does.
 fn open_dialog(harness: &mut Harness<'_, App>, label: &str) {
     click(harness, label);
-    harness.run_steps(4);
+    harness.run_steps(1);
+}
+
+/// The Progress tab, in a window tall enough for its cards stacked.
+fn progress_harness(rel: &str) -> Harness<'static, App> {
+    let mut harness = themed(
+        Harness::builder().with_size(Vec2::new(1280.0, 2600.0)),
+        opening(repo_file(rel)),
+    );
+    harness.run_steps(2);
+    click(&mut harness, "Progress");
+    harness
 }
 
 #[test]
@@ -1177,7 +1205,7 @@ fn the_progress_views() {
 
 // ------------------------------------------------- presets, diagnostics, review
 
-/// Picks an entry of the Presets menu and lets its dialog settle.
+/// Picks an entry of the Presets menu.
 fn open_preset(harness: &mut Harness<'_, App>, entry: &str) {
     click(harness, "Presets");
     open_dialog(harness, entry);
@@ -1227,7 +1255,7 @@ fn story_up_to_warp_room_3_with_gems() {
         .find(|n| n.accesskit_node().role() == Role::RadioButton)
         .expect("the room 3 option")
         .click();
-    harness.run_steps(4);
+    harness.run_steps(2);
     harness.get_by_label("Story up to warp room 3");
     click(&mut harness, "Also their gems (clear, second and colored)");
     harness.run_steps(2);
@@ -1250,6 +1278,48 @@ fn fixed_field<'a>(harness: &'a Harness<'_, App>, text: &'a str) -> egui_kittest
         .query_all_by_value(text)
         .find(|n| n.accesskit_node().role() == Role::TextInput)
         .expect("the fixed time field")
+}
+
+/// A click at `pos`, where there may be no widget.
+fn click_at(harness: &mut Harness<'_, App>, pos: egui::Pos2) {
+    harness.hover_at(pos);
+    for pressed in [true, false] {
+        harness.event(egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        });
+    }
+    harness.run_steps(2);
+}
+
+/// A click beside a dialog keeps it and its options; Enter doesn't apply
+/// a preset; Escape cancels. Enter closes the dialogs that only inform.
+#[test]
+fn dialogs_close_on_escape_but_not_on_a_click_beside_them() {
+    let mut harness = tall_harness(opening(repo_file("tests/saves/game/0019.sav")));
+    open_preset(&mut harness, "All relics at a tier…");
+    click(&mut harness, "Platinum");
+    click_at(&mut harness, egui::pos2(20.0, 1300.0));
+    assert!(
+        harness.state().crash3.has_dialog(),
+        "the backdrop does nothing"
+    );
+    harness.get_by_label("All relics at platinum");
+    press(&mut harness, Modifiers::NONE, Key::Enter);
+    assert!(harness.state().crash3.has_dialog());
+    assert!(history(&harness).is_empty());
+    press(&mut harness, Modifiers::NONE, Key::Escape);
+    assert!(!harness.state().crash3.has_dialog());
+    assert!(history(&harness).is_empty());
+
+    click(&mut harness, "⚙");
+    open_dialog(&mut harness, "About…");
+    click_at(&mut harness, egui::pos2(20.0, 1300.0));
+    assert_eq!(harness.state().dialog, Some(Dialog::About));
+    press(&mut harness, Modifiers::NONE, Key::Enter);
+    assert_eq!(harness.state().dialog, None);
 }
 
 #[test]
@@ -1357,12 +1427,11 @@ fn the_save_review_of_a_session_on_0019() {
     assert_eq!(*review, crate::games::crash3::SaveReview::of(doc(&harness)));
     assert_eq!(*then, None);
     assert_eq!(review.rows.len(), 3);
-    harness.run_steps(4);
-    harness.get_by_label("• Deep Trouble: + crystal; entered, completions 0 → 1");
-    harness.get_by_label("• Speed Shoes: off → on");
-    harness.get_by_label("• Lives: 41 → 42");
-    harness.get_by_label("• Percentage: 19% → 20%");
-    harness.get_by_label("• Crystals: 10 → 11");
+    harness.get_by_label("Deep Trouble: + crystal; entered, completions 0 → 1");
+    harness.get_by_label("Speed Shoes: off → on");
+    harness.get_by_label("Lives: 41 → 42");
+    harness.get_by_label("Percentage: 19% → 20%");
+    harness.get_by_label("Crystals: 10 → 11");
     harness.get_by_label("No warnings.");
     harness.get_by_label_contains("The file it replaces is kept as ");
     assert!(backups(&dir).is_empty(), "nothing written yet");
@@ -1393,7 +1462,6 @@ fn the_review_can_be_turned_off_and_on() {
 
     type_lives(&mut harness, "42");
     press(&mut harness, Modifiers::COMMAND, Key::S);
-    harness.run_steps(4);
     click(&mut harness, "Don't show this again");
     assert!(!harness.state().prefs.skip_save_review, "only once saved");
     confirm_review(&mut harness);
@@ -1496,14 +1564,12 @@ fn the_preset_diagnostics_and_review_views() {
         view: Some(view),
         ..opening_options(rel)
     };
-    let mut harness = harness(app(options("tests/saves/game/0019.sav", View::PresetAll)));
-    harness.run_steps(4);
+    let harness = harness(app(options("tests/saves/game/0019.sav", View::PresetAll)));
     harness.get_by_label("Complete everything (108%)");
-    let mut harness = self::harness(app(options(
+    let harness = self::harness(app(options(
         "tests/saves/game/0019.sav",
         View::PresetStory3,
     )));
-    harness.run_steps(4);
     harness.get_by_label("Story up to warp room 3");
     let harness = self::harness(app(options(
         "tests/saves/edited/t4_crystals.sav",
@@ -1557,17 +1623,12 @@ fn disabled(harness: &Harness<'_, App>, label: &str) -> bool {
     harness.get_by_label(label).accesskit_node().is_disabled()
 }
 
-/// Clicks in the conversion dialog and lets it settle: its contents change
-/// size, and the modal takes a few frames to centre again.
-fn settle_click(harness: &mut Harness<'_, App>, label: &str) {
-    open_dialog(harness, label);
-}
-
 /// Clicks a button of the conversion dialog that shows a file dialog,
 /// which answers `path`. Returns where that dialog started.
 fn click_with_dialog(harness: &mut Harness<'_, App>, label: &str, path: PathBuf) -> PathBuf {
     harness.state_mut().dialog_answers.push_back(Some(path));
-    settle_click(harness, label);
+    // It may open the dialog that says where the file went.
+    open_dialog(harness, label);
     assert!(
         harness.state().dialog_answers.is_empty(),
         "the dialog was shown for {label}"
@@ -1634,7 +1695,7 @@ fn converting_0019_to_pc_and_back() {
     // Back to Switch with the built-in template: the suggested name is the
     // Switch file of the source's slot.
     open_dialog(&mut harness, "Convert to Switch…");
-    settle_click(&mut harness, "Built-in new-game template");
+    click(&mut harness, "Built-in new-game template");
     harness.get_by_label("No game data lost: the converted save reads back the same.");
     let back = dir.join("back.sav");
     let start = click_with_dialog(&mut harness, "Convert…", back.clone());
@@ -1671,14 +1732,14 @@ fn a_wrong_template_is_refused_inline() {
     assert!(disabled(&harness, "Convert…"));
 
     // The built-in template works; going back to the picked file doesn't.
-    settle_click(&mut harness, "Built-in new-game template");
+    click(&mut harness, "Built-in new-game template");
     assert!(
         harness
             .query_by_label_contains("Not an N. Sane Trilogy save")
             .is_none()
     );
     assert!(!disabled(&harness, "Convert…"));
-    settle_click(&mut harness, "My save from the PC version (recommended)");
+    click(&mut harness, "My save from the PC version (recommended)");
     harness.get_by_label_contains("Not an N. Sane Trilogy save");
     assert!(disabled(&harness, "Convert…"));
 
@@ -1699,7 +1760,7 @@ fn unsaved_edits_are_converted() {
     let mut harness = tall_harness(opening(repo_file("tests/saves/game/0019.sav")));
     type_lives(&mut harness, "42");
     open_dialog(&mut harness, "Convert to PC…");
-    settle_click(&mut harness, "Built-in new-game template");
+    click(&mut harness, "Built-in new-game template");
     harness.get_by_label(
         "Includes the unsaved changes (1 change). The open save itself is not written.",
     );
@@ -1721,12 +1782,11 @@ fn unsaved_edits_are_converted() {
 
 #[test]
 fn the_convert_view_picks_the_template() {
-    let mut harness = tall_harness(app(Options {
+    let harness = tall_harness(app(Options {
         view: Some(View::Convert),
         template: Some(repo_file("tests/saves/game/ALCHEMYXSAVE_8.sav")),
         ..opening_options("tests/saves/game/0019.sav")
     }));
-    harness.run_steps(4);
     assert_eq!(
         convert(&harness).choice,
         crate::games::crash3::transfer_ui::Choice::Own

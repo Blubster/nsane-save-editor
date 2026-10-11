@@ -99,6 +99,27 @@ nsane-save-editor --open tests/saves/game/0019.sav \
 
 The capture is the window's own rendering, at the display's scale, without the window frame.
 
+Without a window, an ignored test renders the main view (light and dark, at 1280×800 and 1024×720), a selected level and every `--view`, in both themes, to PNG files. It draws with wgpu and needs no display:
+
+```sh
+NSANE_RENDER_DIR=/tmp/renders cargo test -p gui renders -- --ignored
+NSANE_RENDER_DIR=/tmp/renders NSANE_RENDER_ONLY=preset cargo test -p gui renders -- --ignored
+```
+
+`NSANE_RENDER_ONLY` keeps the renders whose name contains it.
+
+## Fonts
+
+The interface is set in Inter 4.1 (SIL Open Font License 1.1, `assets/fonts/OFL.txt`), regular and semibold, cut down to Latin, Latin Extended and the punctuation the app uses. Other scripts, in file names and system messages, fall back to egui's built-in fonts. To cut them again from the release's `extras/ttf` files, with fontTools:
+
+```sh
+pyftsubset Inter-Regular.ttf --no-hinting --name-IDs=0,1,2,3,4,5,6,13,14 \
+    --unicodes=U+0020-007E,U+00A0-024F,U+02C6-02DD,U+2010-2027,U+2030-203A,U+2044,U+20AC,U+2122,U+2190-2199,U+2212,U+2260,U+2264-2265 \
+    --output-file=crates/gui/assets/fonts/Inter-Regular.ttf
+```
+
+and the same for `Inter-SemiBold.ttf`.
+
 ## App icon
 
 The icon is the crystal of the icon set, rendered by the app itself. `crates/gui/assets/` keeps the PNG files and `icon.ico`: the Windows executable embeds the `.ico` (`build.rs`), the web build uses it as its favicon, and the window shows the 256-pixel PNG. After changing the crystal, write them again:

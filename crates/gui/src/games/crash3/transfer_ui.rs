@@ -10,7 +10,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::{Path, PathBuf};
 
-use egui::{Button, Grid, Id, Key, Modal, RichText, ScrollArea, Ui};
+use egui::{Grid, RichText, Ui};
 use nsane::crash3::{Crash3Save, Totals};
 use nsane::diff::{Change, diff};
 use nsane::igb::IgbError;
@@ -18,9 +18,9 @@ use nsane::slot::{CRASH3_SLOTS, crash3_slot, file_name};
 use nsane::transfer::{Role, TransferError, VERIFIED_IN_GAME, bundled_template_save, transfer};
 use nsane::{Document, Platform};
 
-use super::preview::plural;
 use super::rooms::banner;
 use crate::app::{Action, static_icon};
+use crate::dialog::{self, Dialog, option_group, plural};
 use crate::icons::Icon;
 use crate::theme::{self, SPACING};
 
@@ -378,76 +378,82 @@ impl Convert {
         let mut request = None;
         let mut choice = self.choice;
         let target = self.target;
-        Modal::new(Id::new("convert")).show(ctx, |ui| {
-            ui.set_max_width(DIALOG_WIDTH);
-            ui.heading(format!("Convert to {target}"));
-            if !VERIFIED_IN_GAME {
-                ui.add_space(SPACING / 2.0);
-                banner(
-                    ui,
-                    "Experimental. Not yet tested in game. Keep a backup of your saves.",
-                );
-            }
-            ui.add_space(SPACING);
-            source(ui, doc, unsaved);
-            ui.separator();
-            if self.template(ui, &mut choice) {
-                request = Some(Request::PickTemplate);
-            }
-            ui.separator();
-            let outcome = &self.computed.as_ref().expect("refreshed").2;
-            result(ui, target, outcome);
-            ui.separator();
-            #[cfg(not(target_arch = "wasm32"))]
-            let name = self.suggested_name(doc);
-            #[cfg(target_arch = "wasm32")]
-            let name = self.name.clone().unwrap_or_default();
-            let name = self.output(ui, name);
-            if let Some(e) = &self.write_error {
-                error_line(ui, e);
-            }
-            ui.add_space(SPACING);
-            let outcome = &self.computed.as_ref().expect("refreshed").2;
-            let blocker = match outcome {
-                Outcome::NoTemplate => Some("Pick a template first".to_owned()),
-                Outcome::Failed(Failure::Template(e) | Failure::Convert(e)) => Some(e.clone()),
-                Outcome::Converted(c) if !c.changes.is_empty() => {
-                    Some("The converted save would lose game data".to_owned())
-                }
-                Outcome::Converted(_) if name.trim().is_empty() => {
-                    Some("Give the file a name".to_owned())
-                }
-                Outcome::Converted(_) => None,
-            };
-            ui.horizontal(|ui| {
-                #[cfg(not(target_arch = "wasm32"))]
-                let label = "Convert…";
-                #[cfg(target_arch = "wasm32")]
-                let label = "Convert and download";
-                let response = ui.add_enabled(blocker.is_none(), Button::new(label));
-                let response = match &blocker {
-                    Some(why) => response.on_disabled_hover_text(why.as_str()),
-                    None => response.on_hover_text(format!(
-                        "Write the {target} save. The open save stays as it is."
-                    )),
-                };
-                if response.clicked()
-                    && let Some(converted) = outcome.ready()
-                {
-                    request = Some(Request::Write {
-                        bytes: converted.bytes.clone(),
-                        name: name.trim().to_owned(),
-                    });
-                }
-                if ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(Key::Escape)) {
-                    request = Some(Request::Close);
-                }
-            });
-            #[cfg(target_arch = "wasm32")]
-            {
-                self.name = Some(name);
-            }
-        });
+        #[cfg(not(target_arch = "wasm32"))]
+        let name = self.suggested_name(doc);
+        #[cfg(target_arch = "wasm32")]
+        let name = self.name.clone().unwrap_or_default();
+        let this = &*self;
+        let outcome = &this.computed.as_ref().expect("refreshed").2;
+        let shown = Dialog::new("convert", format!("Convert to {target}"))
+            .width(DIALOG_WIDTH)
+            .show(
+                ctx,
+                |ui| {
+                    if !VERIFIED_IN_GAME {
+                        banner(
+                            ui,
+                            "Experimental. Not yet tested in game. Keep a backup of your saves.",
+                        );
+                    }
+                    source(ui, doc, unsaved);
+                    let pick = this.template(ui, &mut choice);
+                    result(ui, target, outcome);
+                    let name = this.output(ui, name);
+                    if let Some(e) = &this.write_error {
+                        error_line(ui, e);
+                    }
+                    let blocker = match outcome {
+                        Outcome::NoTemplate => Some("Pick a template first".to_owned()),
+                        Outcome::Failed(Failure::Template(e) | Failure::Convert(e)) => {
+                            Some(e.clone())
+                        }
+                        Outcome::Converted(c) if !c.changes.is_empty() => {
+                            Some("The converted save would lose game data".to_owned())
+                        }
+                        Outcome::Converted(_) if name.trim().is_empty() => {
+                            Some("Give the file a name".to_owned())
+                        }
+                        Outcome::Converted(_) => None,
+                    };
+                    (pick, name, blocker)
+                },
+                |ui, (_, name, blocker)| {
+                    #[cfg(not(target_arch = "wasm32"))]
+                    let label = "Convert…";
+                    #[cfg(target_arch = "wasm32")]
+                    let label = "Convert and download";
+                    let response =
+                        dialog::primary(ui, label, blocker.is_none(), blocker.as_deref());
+                    let response = match blocker {
+                        Some(_) => response,
+                        None => response.on_hover_text(format!(
+                            "Write the {target} save. The open save stays as it is."
+                        )),
+                    };
+                    if response.clicked()
+                        && let Some(converted) = outcome.ready()
+                    {
+                        request = Some(Request::Write {
+                            bytes: converted.bytes.clone(),
+                            name: name.trim().to_owned(),
+                        });
+                    }
+                    if ui.button("Cancel").clicked() {
+                        request = Some(Request::Close);
+                    }
+                },
+            );
+        let (pick, _name, _) = shown.inner;
+        if pick {
+            request = Some(Request::PickTemplate);
+        }
+        if shown.cancelled {
+            request = Some(Request::Close);
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.name = Some(_name);
+        }
         if choice != self.choice {
             self.choice = choice;
             self.changed();
@@ -459,23 +465,27 @@ impl Convert {
     /// The template choice. Returns whether "Pick file…" was clicked.
     fn template(&self, ui: &mut Ui, choice: &mut Choice) -> bool {
         let target = self.target;
-        ui.strong("Template");
-        wrapped_weak(
+        dialog::section(ui, "Template");
+        dialog::note(
             ui,
             format!(
                 "The game data is copied into a {target} save, which gives the file its \
                  {target} layout. Its own progress is replaced."
             ),
         );
-        ui.radio_value(
-            choice,
-            Choice::Own,
-            format!("My save from the {target} version (recommended)"),
-        )
-        .on_hover_text("It matches your game version");
+        ui.add_space(SPACING / 2.0);
         let mut pick = false;
-        ui.indent("own-template", |ui| {
+        option_group(ui, |ui| {
+            ui.radio_value(
+                choice,
+                Choice::Own,
+                format!("My save from the {target} version (recommended)"),
+            )
+            .on_hover_text("It matches your game version");
+            // Under the radio's text.
+            let indent = ui.spacing().icon_width + ui.spacing().icon_spacing;
             ui.horizontal(|ui| {
+                ui.add_space(indent);
                 if ui
                     .button("Pick file…")
                     .on_hover_text(format!("Pick a {target} save"))
@@ -485,7 +495,7 @@ impl Convert {
                 }
                 match &self.own {
                     Some(t) => {
-                        let label = ui.add(egui::Label::new(RichText::new(&t.name).strong()));
+                        let label = ui.label(theme::bold(&t.name));
                         #[cfg(not(target_arch = "wasm32"))]
                         if let Some(path) = &t.path {
                             label.on_hover_text(path.display().to_string());
@@ -507,17 +517,20 @@ impl Convert {
                 _ => None,
             };
             if let Some(e) = own_error {
+                ui.horizontal(|ui| {
+                    ui.add_space(indent);
+                    error_line(ui, e);
+                });
+            }
+            ui.radio_value(choice, Choice::Bundled, "Built-in new-game template")
+                .on_hover_text(format!("A new game saved by the {target} version"));
+            if *choice == Choice::Bundled
+                && let Some((_, Choice::Bundled, Outcome::Failed(Failure::Template(e)))) =
+                    &self.computed
+            {
                 error_line(ui, e);
             }
         });
-        ui.radio_value(choice, Choice::Bundled, "Built-in new-game template")
-            .on_hover_text(format!("A new game saved by the {target} version"));
-        if *choice == Choice::Bundled
-            && let Some((_, Choice::Bundled, Outcome::Failed(Failure::Template(e)))) =
-                &self.computed
-        {
-            error_line(ui, e);
-        }
         if pick {
             *choice = Choice::Own;
         }
@@ -527,11 +540,11 @@ impl Convert {
     /// Where the converted save goes. Returns the name to write under.
     fn output(&self, ui: &mut Ui, name: String) -> String {
         let target = self.target;
-        ui.strong("Output");
+        dialog::section(ui, "Output");
         #[cfg(not(target_arch = "wasm32"))]
         let name = {
             ui.label(format!("Suggested file name: {name}"));
-            wrapped_weak(
+            dialog::note(
                 ui,
                 format!(
                     "{} To replace a slot, write over its file; a backup is made.",
@@ -545,9 +558,9 @@ impl Convert {
             let mut name = name;
             ui.horizontal(|ui| {
                 ui.label("Download as");
-                ui.text_edit_singleline(&mut name);
+                ui.add(egui::TextEdit::singleline(&mut name).desired_width(ui.available_width()));
             });
-            wrapped_weak(
+            dialog::note(
                 ui,
                 format!(
                     "{} To replace a slot, put the download in place of its file, after \
@@ -568,85 +581,82 @@ impl Convert {
     ) -> Option<Request> {
         let mut request = None;
         let target = self.target;
-        Modal::new(Id::new("converted")).show(ctx, |ui| {
-            ui.set_max_width(DIALOG_WIDTH);
-            ui.heading(format!("Converted to {target}"));
-            ui.add_space(SPACING);
-            match &written {
-                #[cfg(not(target_arch = "wasm32"))]
-                Written::File { path, backup } => {
-                    wrapped(ui, format!("Saved {}", path.display()));
-                    if let Some(backup) = backup {
-                        wrapped_weak(
-                            ui,
-                            format!("Backup of the previous file: {}", backup.display()),
-                        );
-                    }
-                }
-                #[cfg(target_arch = "wasm32")]
-                Written::Download { name, .. } => {
-                    wrapped(ui, format!("Downloaded {name}."));
-                    wrapped_weak(
-                        ui,
-                        format!(
-                            "{} If the browser added a number to the name, remove it.",
-                            naming(target)
-                        ),
-                    );
-                }
-            }
-            if !VERIFIED_IN_GAME {
-                wrapped_weak(ui, "Check it in game before deleting anything.");
-            }
-            ui.add_space(SPACING);
-            ui.horizontal(|ui| {
-                if ui
-                    .button("Open the converted save")
-                    .on_hover_text("Open it in the editor, in place of this one")
-                    .clicked()
-                {
-                    actions.push(match &written {
+        let shown = Dialog::new("converted", format!("Converted to {target}"))
+            .width(DIALOG_WIDTH)
+            .enter_confirms()
+            .show(
+                ctx,
+                |ui| {
+                    match &written {
                         #[cfg(not(target_arch = "wasm32"))]
-                        Written::File { path, .. } => Action::OpenPath(path.clone()),
+                        Written::File { path, backup } => {
+                            dialog::wrapped(ui, format!("Saved {}", path.display()));
+                            if let Some(backup) = backup {
+                                dialog::note(
+                                    ui,
+                                    format!("Backup of the previous file: {}", backup.display()),
+                                );
+                            }
+                        }
                         #[cfg(target_arch = "wasm32")]
-                        Written::Download { name, bytes } => Action::OpenBytes {
-                            name: name.clone(),
-                            bytes: bytes.clone(),
-                        },
+                        Written::Download { name, .. } => {
+                            dialog::wrapped(ui, format!("Downloaded {name}."));
+                            dialog::note(
+                                ui,
+                                format!(
+                                    "{} If the browser added a number to the name, remove it.",
+                                    naming(target)
+                                ),
+                            );
+                        }
+                    }
+                    if !VERIFIED_IN_GAME {
+                        dialog::note(ui, "Check it in game before deleting anything.");
+                    }
+                },
+                |ui, _| {
+                    if dialog::primary(ui, "Close", true, None).clicked() {
+                        request = Some(Request::Close);
+                    }
+                    dialog::left(ui, |ui| {
+                        if ui
+                            .button("Open the converted save")
+                            .on_hover_text("Open it in the editor, in place of this one")
+                            .clicked()
+                        {
+                            actions.push(match &written {
+                                #[cfg(not(target_arch = "wasm32"))]
+                                Written::File { path, .. } => Action::OpenPath(path.clone()),
+                                #[cfg(target_arch = "wasm32")]
+                                Written::Download { name, bytes } => Action::OpenBytes {
+                                    name: name.clone(),
+                                    bytes: bytes.clone(),
+                                },
+                            });
+                            request = Some(Request::Close);
+                        }
                     });
-                    request = Some(Request::Close);
-                }
-                if ui.button("Close").clicked()
-                    || ui.input(|i| i.key_pressed(Key::Escape) || i.key_pressed(Key::Enter))
-                {
-                    request = Some(Request::Close);
-                }
-            });
-        });
+                },
+            );
+        if shown.cancelled || shown.confirmed {
+            request = Some(Request::Close);
+        }
         request
     }
-}
-
-fn wrapped(ui: &mut Ui, text: impl Into<egui::WidgetText>) {
-    ui.add(egui::Label::new(text).wrap());
-}
-
-fn wrapped_weak(ui: &mut Ui, text: impl Into<String>) {
-    ui.add(egui::Label::new(RichText::new(text).weak()).wrap());
 }
 
 fn error_line(ui: &mut Ui, text: &str) {
     let pal = theme::palette(ui.visuals().dark_mode);
     ui.horizontal(|ui| {
         static_icon(ui, Icon::Error, theme::ICON_SMALL);
-        ui.add(egui::Label::new(RichText::new(text).color(pal.error.base)).wrap());
+        dialog::wrapped(ui, RichText::new(text).color(pal.error_text));
     });
 }
 
 /// The open save: name, platform, percentage, and whether unsaved changes
 /// go with it.
 fn source(ui: &mut Ui, doc: &Document, unsaved: Option<usize>) {
-    ui.strong("Source");
+    dialog::section(ui, "Source");
     let save = doc.current();
     ui.label(format!(
         "{} · {} · {}% · {} lives",
@@ -656,7 +666,7 @@ fn source(ui: &mut Ui, doc: &Document, unsaved: Option<usize>) {
         save.lives()
     ));
     if let Some(count) = unsaved {
-        wrapped_weak(
+        dialog::note(
             ui,
             format!(
                 "Includes the unsaved changes ({}). The open save itself is not written.",
@@ -668,17 +678,18 @@ fn source(ui: &mut Ui, doc: &Document, unsaved: Option<usize>) {
 
 /// The totals of the source and of the converted save, and the verdict.
 fn result(ui: &mut Ui, target: Platform, outcome: &Outcome) {
-    ui.strong("Result");
+    dialog::section(ui, "Result");
     let converted = match outcome {
         Outcome::NoTemplate => {
-            ui.weak(format!(
-                "Pick a save from the {target} version, or use the built-in template."
-            ));
+            dialog::note(
+                ui,
+                format!("Pick a save from the {target} version, or use the built-in template."),
+            );
             return;
         }
         // Shown with the template.
         Outcome::Failed(Failure::Template(_)) => {
-            ui.weak("No result: see the template.");
+            dialog::note(ui, "No result: see the template.");
             return;
         }
         Outcome::Failed(Failure::Convert(e)) => {
@@ -707,28 +718,29 @@ fn result(ui: &mut Ui, target: Platform, outcome: &Outcome) {
     ];
     Grid::new("convert-totals")
         .num_columns(3)
-        .spacing([3.0 * SPACING, 2.0])
+        .spacing([3.0 * SPACING, 3.0])
         .show(ui, |ui| {
             ui.label("");
             ui.weak("Source");
             ui.weak(format!("Converted ({})", converted.platform));
             ui.end_row();
             for (name, before, after) in rows {
-                ui.label(name);
+                ui.weak(name);
                 ui.label(&before);
                 if before == after {
                     ui.label(after);
                 } else {
-                    ui.colored_label(pal.error.base, after);
+                    ui.colored_label(pal.error_text, after);
                 }
                 ui.end_row();
             }
         });
     ui.add_space(SPACING / 2.0);
     if converted.changes.is_empty() {
-        ui.label(
+        dialog::wrapped(
+            ui,
             RichText::new("No game data lost: the converted save reads back the same.")
-                .color(pal.accent.base),
+                .color(pal.success_text),
         );
         return;
     }
@@ -740,14 +752,17 @@ fn result(ui: &mut Ui, target: Platform, outcome: &Outcome) {
             plural(converted.changes.len(), "difference", "differences")
         ),
     );
-    ScrollArea::vertical()
-        .max_height(DIFFERENCES_HEIGHT)
-        .auto_shrink([false, true])
-        .show(ui, |ui| {
-            for change in &converted.changes {
-                wrapped(ui, format!("• {}", change.describe()));
-            }
-        });
+    let differences = dialog::Group {
+        title: "Differences".to_owned(),
+        rows: converted.changes.iter().map(Change::describe).collect(),
+    };
+    dialog::changes(
+        ui,
+        "convert-differences",
+        &[differences],
+        &[],
+        DIFFERENCES_HEIGHT,
+    );
 }
 
 #[cfg(test)]

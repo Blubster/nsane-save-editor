@@ -6,9 +6,7 @@
 //! reaching a relic count, open a dialog that previews their changes before
 //! they are applied. Every action is one undo step.
 
-use egui::{
-    Align, Button, Grid, Id, Key, Layout, Modal, RichText, ScrollArea, Ui, WidgetInfo, WidgetType,
-};
+use egui::{Align, Button, Grid, Layout, RichText, ScrollArea, Ui, WidgetInfo, WidgetType};
 use nsane::Document;
 use nsane::crash3::presets::{ReachRelicCount, TimePolicy, all_abilities, all_cutscenes};
 use nsane::crash3::tables::SecretRoomLevel;
@@ -17,14 +15,19 @@ use nsane::crash3::{
 };
 
 use super::level_row::{self, push};
-use super::preview::{self, Previewed, plural};
+use super::preview::{self, Previewed};
 use super::rooms;
 use crate::app::{Action, static_icon};
+use crate::dialog::{self, Dialog, note, option_group, plural};
 use crate::icons::{self, Boss, Icon};
 use crate::theme::{self, SPACING};
 
 /// The width a modal dialog keeps to.
 const DIALOG_WIDTH: f32 = 460.0;
+/// The narrowest a card of this tab gets before the cards stack: the
+/// widest rows (a secret room level and its button, a step of scenes and
+/// its two buttons) fit.
+const MIN_CARD_WIDTH: f32 = 430.0;
 /// The scene name column: fits "Cortex Post NTropy Fight".
 const SCENE_NAME_WIDTH: f32 = 170.0;
 
@@ -166,8 +169,12 @@ impl Progress {
                 ui.add_space(rooms::CARD_GAP);
                 rooms::card(ui, |ui| cutscenes(ui, doc, actions, scroll));
             };
-            if rooms::columns_for(ui.available_width()) >= 2 {
+            if ui.available_width() >= 2.0 * MIN_CARD_WIDTH + rooms::CARD_GAP {
+                ui.spacing_mut().item_spacing.x = rooms::CARD_GAP;
                 ui.columns(2, |cols| {
+                    for col in cols.iter_mut() {
+                        col.spacing_mut().item_spacing = theme::ITEM_SPACING;
+                    }
                     first(&mut cols[0], selected, actions, &mut open);
                     second(&mut cols[1], actions, scroll);
                 });
@@ -184,57 +191,67 @@ impl Progress {
     }
 
     fn dialog(&mut self, ui: &mut Ui, doc: &Document, actions: &mut Vec<Action>) {
-        let Some(dialog) = &mut self.dialog else {
+        let Some(open) = &mut self.dialog else {
             return;
         };
-        let ran = Previewed::refresh(&mut dialog.computed, doc, &dialog.bulk, |save| {
-            Ok(dialog.bulk.edits(save))
+        let ran = Previewed::refresh(&mut open.computed, doc, &open.bulk, |save| {
+            Ok(open.bulk.edits(save))
         });
         #[cfg(test)]
         {
-            dialog.runs += usize::from(ran);
+            open.runs += usize::from(ran);
         }
         #[cfg(not(test))]
         let _ = ran;
-        let Some(computed) = &dialog.computed else {
+        let Some(computed) = &open.computed else {
             return;
         };
 
-        let mut bulk = dialog.bulk;
+        let mut bulk = open.bulk;
         let mut close = false;
         let mut apply = false;
-        Modal::new(Id::new("progress-bulk")).show(ui.ctx(), |ui| {
-            ui.set_max_width(DIALOG_WIDTH);
-            match &mut bulk {
-                Bulk::Unlock {
-                    room,
-                    with_abilities,
-                    skip_cutscenes,
-                } => unlock_options(ui, *room, with_abilities, skip_cutscenes),
-                Bulk::Relics {
-                    number,
-                    count,
-                    options,
-                } => relic_options(ui, doc, *number, *count, options),
+        let title = match bulk {
+            Bulk::Unlock { room, .. } => format!("Unlock up to Warp Room {room}"),
+            Bulk::Relics { number, .. } => {
+                format!("Open the secret warp room up to level {number}")
             }
-            ui.separator();
-            let can_apply = preview::show(ui, doc, computed);
-            if let Bulk::Unlock { .. } = computed.key {
-                note(ui, "Each defeated boss counts 1% towards the percentage.");
-            }
-            ui.add_space(SPACING);
-            ui.horizontal(|ui| {
-                if ui.add_enabled(can_apply, Button::new("Apply")).clicked() {
-                    apply = true;
-                }
-                if ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(Key::Escape)) {
-                    close = true;
-                }
-            });
-        });
+        };
+        let shown = Dialog::new("progress-bulk", title)
+            .width(DIALOG_WIDTH)
+            .show(
+                ui.ctx(),
+                |ui| {
+                    match &mut bulk {
+                        Bulk::Unlock {
+                            room,
+                            with_abilities,
+                            skip_cutscenes,
+                        } => unlock_options(ui, *room, with_abilities, skip_cutscenes),
+                        Bulk::Relics {
+                            number,
+                            count,
+                            options,
+                        } => relic_options(ui, doc, *number, *count, options),
+                    }
+                    let can_apply = preview::show(ui, doc, computed);
+                    if let Bulk::Unlock { .. } = computed.key {
+                        note(ui, "Each defeated boss counts 1% towards the percentage.");
+                    }
+                    can_apply
+                },
+                |ui, &can_apply| {
+                    if dialog::primary(ui, "Apply", can_apply, None).clicked() {
+                        apply = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        close = true;
+                    }
+                },
+            );
+        close |= shown.cancelled;
         // The options changed this frame: the preview no longer matches them.
-        if bulk != dialog.bulk {
-            dialog.bulk = bulk;
+        if bulk != open.bulk {
+            open.bulk = bulk;
             ui.ctx().request_repaint();
         } else if apply {
             actions.push(Action::Apply {
@@ -259,12 +276,7 @@ fn and_list(items: &[&str]) -> String {
 }
 
 fn title(ui: &mut Ui, text: &str) -> egui::Response {
-    ui.label(RichText::new(text).strong().size(theme::FONT_BODY + 2.0))
-}
-
-/// A note in the weak colour, wrapped to the width.
-fn note(ui: &mut Ui, text: &str) {
-    ui.add(egui::Label::new(RichText::new(text).weak()).wrap());
+    ui.label(theme::bold(text).size(theme::FONT_TITLE))
 }
 
 // ------------------------------------------------------------- warp rooms
@@ -312,7 +324,7 @@ fn warp_rooms(
                     let text = if defeated {
                         text
                     } else {
-                        text.color(theme::palette(ui.visuals().dark_mode).muted)
+                        text.color(theme::palette(ui.visuals().dark_mode).text_weak)
                     };
                     if ui
                         .add(Button::selectable(*selected == Some(boss), text))
@@ -385,26 +397,26 @@ fn unlock_options(ui: &mut Ui, room: u8, with_abilities: &mut bool, skip_cutscen
     let n = usize::from(room) - 1;
     let bosses: Vec<&str> = BOSSES[..n].iter().map(|b| b.name()).collect();
     let powers: Vec<&str> = ABILITIES[..n].iter().map(|a| a.name()).collect();
-    ui.heading(format!("Unlock up to Warp Room {room}"));
-    ui.add_space(SPACING);
-    ui.add(
-        egui::Label::new(format!(
+    dialog::wrapped(
+        ui,
+        format!(
             "Marks {} as defeated, so that warp rooms 2 to {room} open.",
             and_list(&bosses)
-        ))
-        .wrap(),
+        ),
     );
-    ui.add_space(SPACING / 2.0);
-    ui.checkbox(
-        with_abilities,
-        "Also grant the abilities of the defeated bosses",
-    )
-    .on_hover_text(and_list(&powers));
-    ui.checkbox(skip_cutscenes, "Skip their story scenes")
-        .on_hover_text(
-            "Marks the hub scenes up to each of these bosses as seen. Scenes not skipped play \
-             later, which is harmless.",
-        );
+    dialog::section(ui, "Options");
+    option_group(ui, |ui| {
+        ui.checkbox(
+            with_abilities,
+            "Also grant the abilities of the defeated bosses",
+        )
+        .on_hover_text(and_list(&powers));
+        ui.checkbox(skip_cutscenes, "Skip their story scenes")
+            .on_hover_text(
+                "Marks the hub scenes up to each of these bosses as seen. Scenes not skipped \
+                 play later, which is harmless.",
+            );
+    });
 }
 
 // ------------------------------------------------------- secret warp room
@@ -412,7 +424,7 @@ fn unlock_options(ui: &mut Ui, room: u8, with_abilities: &mut bool, skip_cutscen
 fn secret_room(ui: &mut Ui, doc: &Document, open: &mut Option<Bulk>) {
     let relics = doc.current().totals().relics();
     title(ui, "Secret warp room");
-    ui.label(RichText::new(plural(relics as usize, "relic", "relics")).strong())
+    ui.label(theme::bold(plural(relics as usize, "relic", "relics")))
         .on_hover_text("Relics of any tier, counted from the save as it is now");
     note(
         ui,
@@ -467,25 +479,24 @@ fn relic_options(
     options: &mut ReachRelicCount,
 ) {
     let relics = doc.current().totals().relics();
-    ui.heading(format!("Open the secret warp room up to level {number}"));
-    ui.add_space(SPACING);
-    ui.add(
-        egui::Label::new(format!(
+    dialog::wrapped(
+        ui,
+        format!(
             "Level {number} opens with {count} relics, and the save has {relics}. The secret \
              room only checks the relic count, so this gives a relic to levels that have none, \
              in level order, until the save has {count}."
-        ))
-        .wrap(),
+        ),
     );
-    ui.add_space(SPACING / 2.0);
-    ui.horizontal(|ui| {
-        ui.label("Relic");
-        for relic in Relic::ALL {
-            ui.radio_value(&mut options.tier, relic, relic.name());
-        }
+    dialog::section(ui, "Relic");
+    option_group(ui, |ui| {
+        ui.horizontal(|ui| {
+            for relic in Relic::ALL {
+                ui.radio_value(&mut options.tier, relic, relic.name());
+            }
+        });
     });
-    ui.label("Times");
-    ui.indent("times", |ui| {
+    dialog::section(ui, "Times");
+    option_group(ui, |ui| {
         ui.radio_value(
             &mut options.times,
             TimePolicy::Matching,
@@ -525,7 +536,7 @@ fn abilities(ui: &mut Ui, doc: &Document, actions: &mut Vec<Action>) {
                 push(actions, doc, Edit::SetAbility { ability, on: !on });
             }
             ui.vertical(|ui| {
-                ui.strong(ability.name());
+                ui.label(theme::bold(ability.name()));
                 ui.weak(format!("Normally granted by {}", boss.name()));
             });
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -614,7 +625,7 @@ fn cutscenes(ui: &mut Ui, doc: &Document, actions: &mut Vec<Action>, scroll: &mu
         ui.add_space(SPACING);
         ui.horizontal(|ui| {
             let seen = step.scenes.len() - to_change(save, step.scenes, true).len();
-            ui.strong(step_name);
+            ui.label(theme::bold(step_name));
             ui.weak(format!("{seen} / {} seen", step.scenes.len()));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 for (seen, text) in [(false, "Mark all unseen"), (true, "Mark all seen")] {

@@ -8,12 +8,13 @@ use std::path::{Path, PathBuf};
 
 use egui::{
     Align, Align2, Button, Color32, Context, Frame, Id, Key, KeyboardShortcut, Layout, Margin,
-    Modal, Modifiers, RichText, Sense, Ui, Vec2, ViewportCommand,
+    Modifiers, RichText, Sense, Ui, Vec2, ViewportCommand,
 };
 use nsane::SaveError;
 use nsane::crash3::{Edit, LevelId};
 use nsane::{Document, OpenError};
 
+use crate::dialog::{self, plural};
 use crate::gallery::Gallery;
 use crate::games::crash3::{
     Convert, ConvertRequest, Crash3Ui, Preset, SaveReview, Written, save_blocker,
@@ -28,6 +29,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const LICENSE: &str = env!("CARGO_PKG_LICENSE");
 pub const DISCLAIMER: &str = "Fan-made tool, not affiliated with or endorsed by Activision or \
                               Vicarious Visions. Crash Bandicoot is a trademark of Activision.";
+pub const FONT_CREDIT: &str = "Text set in Inter, under the SIL Open Font License 1.1.";
 #[cfg(not(target_arch = "wasm32"))]
 pub const PRIVACY: &str = "No data leaves your computer: saves are read and written on it, \
                            and the app makes no network connection.";
@@ -1270,6 +1272,7 @@ impl App {
         let doc = &file.doc;
         if !narrow || self.prefs.show_overview {
             egui::Panel::left("overview")
+                .frame(side_frame(ui))
                 .resizable(true)
                 .default_size(240.0)
                 .min_size(180.0)
@@ -1279,6 +1282,7 @@ impl App {
         }
         if !narrow || self.prefs.show_details {
             egui::Panel::right("details")
+                .frame(side_frame(ui))
                 .resizable(true)
                 .default_size(300.0)
                 .min_size(200.0)
@@ -1286,15 +1290,17 @@ impl App {
                     self.crash3.details(ui, doc, self.selected, actions)
                 });
         }
-        egui::CentralPanel::default().show(ui, |ui| {
-            self.crash3.central(ui, doc, &mut self.selected, actions)
-        });
+        egui::CentralPanel::default()
+            .frame(central_frame(ui))
+            .show(ui, |ui| {
+                self.crash3.central(ui, doc, &mut self.selected, actions)
+            });
         let ctx = ui.ctx().clone();
         self.crash3.windows(&ctx, doc, &mut self.selected, actions);
     }
 
     fn dialogs(&mut self, ctx: &Context) {
-        let Some(dialog) = &self.dialog else {
+        let Some(current) = &self.dialog else {
             return;
         };
         let mut close = false;
@@ -1305,41 +1311,48 @@ impl App {
         #[cfg(target_arch = "wasm32")]
         let mut download_as = None;
         let blocked = self.save_blocked();
-        match dialog {
+        match current {
             Dialog::Unsaved(next) => {
                 let (name, count) = match &mut self.file {
                     Some(f) => (f.name().to_owned(), f.change_count()),
                     None => ("The save".to_owned(), 0),
                 };
-                Modal::new(Id::new("unsaved")).show(ctx, |ui| {
-                    ui.set_max_width(380.0);
-                    ui.heading("Unsaved changes");
-                    ui.add_space(theme::SPACING);
-                    ui.label(format!(
-                        "{name} has unsaved changes ({} since it was opened). \
-                         Save them first?",
-                        plural(count, "change", "changes")
-                    ));
-                    ui.add_space(theme::SPACING);
-                    ui.horizontal(|ui| {
-                        let save = ui.add_enabled(blocked.is_none(), Button::new("Save"));
-                        let save = match &blocked {
-                            Some(reason) => save.on_disabled_hover_text(reason.as_str()),
-                            None => save,
-                        };
-                        if save.clicked() {
-                            save_first = true;
-                            then = Some(next.clone());
-                        }
-                        if ui.button("Discard").clicked() {
-                            then = Some(next.clone());
-                        }
-                        if ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(Key::Escape))
-                        {
-                            close = true;
-                        }
-                    });
-                });
+                let shown = dialog::Dialog::new("unsaved", "Unsaved changes")
+                    .width(400.0)
+                    .show(
+                        ctx,
+                        |ui| {
+                            dialog::wrapped(
+                                ui,
+                                format!(
+                                    "{name} has unsaved changes ({} since it was opened). \
+                                     Save them first?",
+                                    plural(count, "change", "changes")
+                                ),
+                            );
+                        },
+                        |ui, _| {
+                            if dialog::primary(ui, "Save", blocked.is_none(), blocked.as_deref())
+                                .clicked()
+                            {
+                                save_first = true;
+                                then = Some(next.clone());
+                            }
+                            if ui.button("Cancel").clicked() {
+                                close = true;
+                            }
+                            dialog::left(ui, |ui| {
+                                if ui
+                                    .button("Discard")
+                                    .on_hover_text("Go on without saving: the changes are lost")
+                                    .clicked()
+                                {
+                                    then = Some(next.clone());
+                                }
+                            });
+                        },
+                    );
+                close |= shown.cancelled;
             }
             Dialog::Review {
                 review,
@@ -1347,109 +1360,118 @@ impl App {
                 dont_show,
                 ..
             } => {
-                let name = self.file.as_ref().map_or("The save", |f| f.name());
+                let name = self.file.as_ref().map_or("the save", |f| f.name());
                 let mut dont_show = *dont_show;
-                Modal::new(Id::new("save-review")).show(ctx, |ui| {
-                    ui.set_max_width(480.0);
-                    ui.heading("Review the changes");
-                    ui.add_space(theme::SPACING);
-                    review.show(ui, name);
-                    ui.separator();
-                    target_text(ui, target);
-                    ui.add_space(theme::SPACING / 2.0);
-                    ui.checkbox(&mut dont_show, "Don't show this again")
-                        .on_hover_text(
-                            "Save without this review. Turn it back on in the settings (⚙).",
-                        );
-                    ui.add_space(theme::SPACING);
-                    ui.horizontal(|ui| {
-                        #[cfg(not(target_arch = "wasm32"))]
-                        let confirm = "Save file";
-                        #[cfg(target_arch = "wasm32")]
-                        let confirm = "Download";
-                        let response = ui.add_enabled(blocked.is_none(), Button::new(confirm));
-                        let response = match &blocked {
-                            Some(reason) => response.on_disabled_hover_text(reason.as_str()),
-                            None => response,
-                        };
-                        if response.clicked() {
-                            confirmed = true;
-                        }
-                        if ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(Key::Escape))
-                        {
-                            close = true;
-                        }
-                    });
-                });
+                #[cfg(not(target_arch = "wasm32"))]
+                let confirm = "Save file";
+                #[cfg(target_arch = "wasm32")]
+                let confirm = "Download";
+                let shown = dialog::Dialog::new("save-review", "Review the changes")
+                    .subtitle(format!("Since {name} was opened"))
+                    .width(500.0)
+                    .show(
+                        ctx,
+                        |ui| {
+                            review.show(ui);
+                            dialog::section(ui, "Where it goes");
+                            target_text(ui, target);
+                        },
+                        |ui, _| {
+                            if dialog::primary(ui, confirm, blocked.is_none(), blocked.as_deref())
+                                .clicked()
+                            {
+                                confirmed = true;
+                            }
+                            if ui.button("Cancel").clicked() {
+                                close = true;
+                            }
+                            dialog::left(ui, |ui| {
+                                ui.checkbox(&mut dont_show, "Don't show this again")
+                                    .on_hover_text(
+                                        "Save without this review. Turn it back on in the \
+                                         settings (⚙).",
+                                    );
+                            });
+                        },
+                    );
+                close |= shown.cancelled;
                 dont_show_now = Some(dont_show);
             }
             Dialog::Error { title, message } => {
-                Modal::new(Id::new("error")).show(ctx, |ui| {
-                    ui.set_max_width(420.0);
-                    ui.horizontal(|ui| {
-                        static_icon(ui, Icon::Error, theme::ICON_MEDIUM);
-                        ui.heading(title.as_str());
-                    });
-                    ui.add_space(theme::SPACING);
-                    ui.label(message.as_str());
-                    ui.add_space(theme::SPACING);
-                    if ui.button("OK").clicked()
-                        || ui.input(|i| i.key_pressed(Key::Escape) || i.key_pressed(Key::Enter))
-                    {
-                        close = true;
-                    }
-                });
+                let shown = dialog::Dialog::new("error", title.as_str())
+                    .icon(Icon::Error, theme::ICON_MEDIUM)
+                    .width(440.0)
+                    .enter_confirms()
+                    .show(
+                        ctx,
+                        |ui| {
+                            dialog::wrapped(ui, message.as_str());
+                        },
+                        |ui, _| {
+                            if dialog::primary(ui, "OK", true, None).clicked() {
+                                close = true;
+                            }
+                        },
+                    );
+                close |= shown.cancelled || shown.confirmed;
             }
             Dialog::About => {
-                Modal::new(Id::new("about")).show(ctx, |ui| {
-                    ui.set_max_width(420.0);
-                    ui.horizontal(|ui| {
-                        static_icon(ui, Icon::Crystal, theme::ICON_XLARGE);
-                        ui.vertical(|ui| {
-                            ui.heading(APP_TITLE);
-                            ui.label(format!("Version {VERSION} · {LICENSE} license"));
-                        });
-                    });
-                    ui.add_space(theme::SPACING);
-                    ui.label(PRIVACY);
-                    ui.add_space(theme::SPACING / 2.0);
-                    ui.label("Keep a copy of your saves before editing them.");
-                    ui.add_space(theme::SPACING / 2.0);
-                    ui.label(RichText::new(DISCLAIMER).weak());
-                    ui.add_space(theme::SPACING);
-                    if ui.button("Close").clicked()
-                        || ui.input(|i| i.key_pressed(Key::Escape) || i.key_pressed(Key::Enter))
-                    {
-                        close = true;
-                    }
-                });
+                let shown = dialog::Dialog::new("about", APP_TITLE)
+                    .subtitle(format!("Version {VERSION} · {LICENSE} license"))
+                    .icon(Icon::Crystal, theme::ICON_XLARGE)
+                    .width(460.0)
+                    .enter_confirms()
+                    .show(
+                        ctx,
+                        |ui| {
+                            dialog::wrapped(ui, PRIVACY);
+                            ui.add_space(theme::SPACING / 2.0);
+                            dialog::wrapped(ui, "Keep a copy of your saves before editing them.");
+                            ui.add_space(theme::SPACING);
+                            dialog::note(ui, DISCLAIMER);
+                            ui.add_space(theme::SPACING / 2.0);
+                            dialog::note(ui, FONT_CREDIT);
+                        },
+                        |ui, _| {
+                            if dialog::primary(ui, "Close", true, None).clicked() {
+                                close = true;
+                            }
+                        },
+                    );
+                close |= shown.cancelled || shown.confirmed;
             }
             #[cfg(target_arch = "wasm32")]
             Dialog::DownloadAs(name) => {
                 let mut name = name.clone();
-                Modal::new(Id::new("download-as")).show(ctx, |ui| {
-                    ui.set_max_width(380.0);
-                    ui.heading("Download as");
-                    ui.add_space(theme::SPACING);
-                    let field = ui.text_edit_singleline(&mut name);
-                    if !field.has_focus() && !field.lost_focus() {
-                        field.request_focus();
-                    }
-                    let entered = field.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
-                    ui.add_space(theme::SPACING);
-                    let valid = !name.trim().is_empty();
-                    ui.horizontal(|ui| {
-                        if (ui.add_enabled(valid, Button::new("Download")).clicked() || entered)
-                            && valid
-                        {
-                            download_as = Some(name.trim().to_owned());
-                        }
-                        if ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(Key::Escape))
-                        {
-                            close = true;
-                        }
-                    });
-                });
+                let shown = dialog::Dialog::new("download-as", "Download as")
+                    .width(400.0)
+                    .show(
+                        ctx,
+                        |ui| {
+                            let field = ui.add(
+                                egui::TextEdit::singleline(&mut name)
+                                    .desired_width(ui.available_width()),
+                            );
+                            if !field.has_focus() && !field.lost_focus() {
+                                field.request_focus();
+                            }
+                            let entered =
+                                field.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+                            let valid = Some(name.trim().to_owned()).filter(|n| !n.is_empty());
+                            (entered, valid)
+                        },
+                        |ui, (entered, valid)| {
+                            let clicked =
+                                dialog::primary(ui, "Download", valid.is_some(), None).clicked();
+                            if clicked || *entered {
+                                download_as.clone_from(valid);
+                            }
+                            if ui.button("Cancel").clicked() {
+                                close = true;
+                            }
+                        },
+                    );
+                close |= shown.cancelled;
                 if let Some(Dialog::DownloadAs(kept)) = &mut self.dialog {
                     *kept = name;
                 }
@@ -1542,7 +1564,7 @@ impl App {
         let rect = ctx.content_rect();
         let painter =
             ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, Id::new("drop")));
-        painter.rect_filled(rect, 0, pal.background.gamma_multiply(0.85));
+        painter.rect_filled(rect, 0, pal.chrome.gamma_multiply(0.85));
         painter.text(
             rect.center(),
             Align2::CENTER_CENTER,
@@ -1570,11 +1592,13 @@ impl App {
             if self.file.is_some() {
                 self.document_ui(ui, &mut actions);
             } else {
-                egui::CentralPanel::default().show(ui, |ui| {
-                    if drop_zone(ui).clicked() {
-                        actions.push(Action::Open);
-                    }
-                });
+                egui::CentralPanel::default()
+                    .frame(central_frame(ui))
+                    .show(ui, |ui| {
+                        if drop_zone(ui).clicked() {
+                            actions.push(Action::Open);
+                        }
+                    });
             }
             self.convert_dialog(&ctx, &mut actions);
             self.dialogs(&ctx);
@@ -1633,7 +1657,21 @@ impl eframe::App for App {
 }
 
 fn bar_frame(ui: &Ui) -> Frame {
-    Frame::side_top_panel(ui.style()).inner_margin(Margin::symmetric(8, 6))
+    Frame::side_top_panel(ui.style()).inner_margin(Margin::symmetric(theme::PANEL_MARGIN, 6))
+}
+
+/// The side panels: the overview and the details.
+fn side_frame(ui: &Ui) -> Frame {
+    Frame::side_top_panel(ui.style()).inner_margin(Margin::same(theme::PANEL_MARGIN))
+}
+
+/// The central area, a shade apart from the panels so that the cards on it
+/// stand out.
+fn central_frame(ui: &Ui) -> Frame {
+    let pal = theme::palette(ui.visuals().dark_mode);
+    Frame::central_panel(ui.style())
+        .fill(pal.canvas)
+        .inner_margin(Margin::same(theme::PANEL_MARGIN))
 }
 
 /// An icon that only shows something, of `size` points.
@@ -1649,7 +1687,7 @@ pub fn static_icon(ui: &mut Ui, icon: Icon, size: f32) -> egui::Response {
 /// File name, platform badge, size budget and unsaved changes.
 fn status(ui: &mut Ui, file: &mut OpenFile) {
     let pal = theme::palette(ui.visuals().dark_mode);
-    let name = ui.add(egui::Label::new(RichText::new(file.name()).strong()).extend());
+    let name = ui.add(egui::Label::new(theme::bold(file.name())).extend());
     #[cfg(not(target_arch = "wasm32"))]
     if let Some(path) = &file.path {
         name.on_hover_text(path.display().to_string());
@@ -1659,14 +1697,12 @@ fn status(ui: &mut Ui, file: &mut OpenFile) {
 
     let platform = file.doc.platform();
     Frame::new()
-        .fill(theme::mix(pal.accent.base, pal.background, 80))
-        .stroke(egui::Stroke::new(1.0, pal.accent.base))
+        .fill(pal.selection)
         .corner_radius(theme::ROUNDING_SMALL)
-        .inner_margin(Margin::symmetric(6, 1))
+        .inner_margin(Margin::symmetric(8, 2))
         .show(ui, |ui| {
-            ui.add(
-                egui::Label::new(RichText::new(platform.name()).color(pal.text).small()).extend(),
-            );
+            let text = theme::bold(platform.name()).color(pal.selected_text);
+            ui.add(egui::Label::new(text).extend());
         })
         .response
         .on_hover_text(match platform {
@@ -1677,9 +1713,9 @@ fn status(ui: &mut Ui, file: &mut OpenFile) {
     let size = file.doc.size_report();
     if let Some(capacity) = size.capacity {
         let color = if !size.fits() {
-            pal.error.base
+            pal.error_text
         } else if size.used * 100 > capacity * BUDGET_WARNING_PERCENT {
-            pal.warning.base
+            pal.warning_text
         } else {
             pal.text_weak
         };
@@ -1698,7 +1734,7 @@ fn status(ui: &mut Ui, file: &mut OpenFile) {
         } else {
             format!("• {}", plural(count, "change", "changes"))
         };
-        ui.add(egui::Label::new(RichText::new(text).color(pal.warning.base)).extend())
+        ui.add(egui::Label::new(RichText::new(text).color(pal.warning_text)).extend())
             .on_hover_text(format!(
                 "Not saved yet. {} since the file was opened.",
                 plural(count, "change", "changes")
@@ -1790,14 +1826,6 @@ fn kib(bytes: usize) -> usize {
     (bytes + 512) / 1024
 }
 
-fn plural(n: usize, one: &str, many: &str) -> String {
-    if n == 1 {
-        format!("1 {one}")
-    } else {
-        format!("{n} {many}")
-    }
-}
-
 pub(crate) fn open_error_message(e: &OpenError) -> String {
     match e {
         nsane::Error::NotASave(why) => format!("Not an N. Sane Trilogy save: {why}."),
@@ -1812,5 +1840,7 @@ fn display_name(path: &Path) -> String {
         .unwrap_or_else(|| path.display().to_string())
 }
 
+#[cfg(test)]
+mod renders;
 #[cfg(test)]
 mod tests;
