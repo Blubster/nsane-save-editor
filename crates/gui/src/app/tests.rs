@@ -750,3 +750,197 @@ fn the_bonus_gem_badge_shows_when_it_is_due() {
     let harness = self::harness(opening(repo_file("saves/0019.sav")));
     assert!(harness.query_by_label("due").is_none());
 }
+
+// ------------------------------------------------------------ level panel
+
+fn selecting(rel: &str, key: &str) -> Options {
+    Options {
+        select: Some(level(key)),
+        ..opening_options(rel)
+    }
+}
+
+/// Leaderboard field `slot` (0–2) of the level panel.
+fn time_field<'a>(harness: &'a Harness<'_, App>, slot: usize) -> egui_kittest::Node<'a> {
+    harness
+        .get_all_by_role(Role::TextInput)
+        .nth(slot)
+        .expect("a leaderboard field")
+}
+
+/// Types `text` over leaderboard field `slot` and leaves it with Enter.
+fn type_time(harness: &mut Harness<'_, App>, slot: usize, text: &str) {
+    time_field(harness, slot).click();
+    harness.run_steps(2);
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    harness.run_steps(1);
+    if text.is_empty() {
+        harness.key_press(Key::Backspace);
+    } else {
+        time_field(harness, slot).type_text(text);
+    }
+    harness.run_steps(1);
+    harness.key_press(Key::Enter);
+    harness.run_steps(2);
+}
+
+/// Every session field but the completions counter, strings as text.
+fn session_values(save: &nsane::crash3::Crash3Save, level: LevelId) -> Vec<String> {
+    use nsane::crash3::tables::field;
+    let session = save.session(level).unwrap();
+    session
+        .fields
+        .iter()
+        .enumerate()
+        .filter(|&(i, _)| i != field::COMPLETIONS)
+        .map(|(_, v)| match *v {
+            nsane::igb::FieldValue::Str(idx) => {
+                String::from_utf8_lossy(save.igb().string(idx).unwrap_or_default()).into_owned()
+            }
+            nsane::igb::FieldValue::Bool { value, .. } => value.to_string(),
+            ref v => format!("{:?}", v.as_u32()),
+        })
+        .collect()
+}
+
+#[test]
+fn the_panel_gives_the_gold_relic_the_game_wrote() {
+    use nsane::crash3::Crash3Save;
+    let mut harness = harness(app(selecting("saves/0010.sav", "toadvillage")));
+    let toad = level("toadvillage");
+    harness.get_by_label("Time trial");
+    click(&mut harness, "Gold");
+    type_time(&mut harness, 1, "0:55.44");
+    assert_eq!(
+        history(&harness),
+        [
+            "Toad Village: gold relic",
+            "Toad Village: times 0:55.44, 1:00.23"
+        ]
+    );
+    let expected = Crash3Save::parse(&fs::read(repo_file("saves/0011.sav")).unwrap()).unwrap();
+    let save = doc(&harness).current();
+    assert_eq!(session_values(save, toad), session_values(&expected, toad));
+    // The game also counted the finish, which no edit writes.
+    assert_eq!(save.completions(toad) + 1, expected.completions(toad));
+    // The fields show the sorted leaderboard.
+    assert_eq!(time_field(&harness, 0).value().as_deref(), Some("0:55.44"));
+    assert_eq!(time_field(&harness, 1).value().as_deref(), Some("1:00.23"));
+}
+
+#[test]
+fn invalid_times_are_refused_and_valid_ones_are_one_step_each() {
+    let mut harness = harness(app(selecting("saves/0019.sav", "toadvillage")));
+    let toad = level("toadvillage");
+    for text in ["1:7x", "99:99:99", "-1", "100:00.00"] {
+        type_time(&mut harness, 2, text);
+        assert!(history(&harness).is_empty(), "{text:?}");
+        assert_eq!(doc(&harness).current().times(toad), [5544, 6023]);
+        // The text stays, outlined, so it can be corrected.
+        assert_eq!(time_field(&harness, 2).value().as_deref(), Some(text));
+    }
+    for (i, (text, cs)) in [("0:58.00", 5800), ("0:57:00", 5700), ("56.00", 5600)]
+        .into_iter()
+        .enumerate()
+    {
+        type_time(&mut harness, 2, text);
+        assert_eq!(history(&harness).len(), i + 1, "{text:?}");
+        assert!(
+            doc(&harness).current().times(toad).contains(&cs),
+            "{text:?}"
+        );
+    }
+    // Each time replaced the slowest one, in the third field.
+    assert_eq!(doc(&harness).current().times(toad), [5544, 5600, 5700]);
+    // Undo restores the fields from the save.
+    press(&mut harness, Modifiers::COMMAND, Key::Z);
+    assert_eq!(doc(&harness).current().times(toad), [5544, 5700, 5800]);
+    assert_eq!(time_field(&harness, 2).value().as_deref(), Some("0:58.00"));
+    // Emptying a field removes its time.
+    type_time(&mut harness, 0, "");
+    assert_eq!(doc(&harness).current().times(toad), [5700, 5800]);
+}
+
+#[test]
+fn fill_a_time_and_set_the_relic_from_the_best_time() {
+    use nsane::crash3::Relic;
+    let mut harness = harness(app(selecting("saves/0019.sav", "toadvillage")));
+    let toad = level("toadvillage");
+    click(&mut harness, "Platinum");
+    click(&mut harness, "Fill a time for this relic");
+    // Toad Village platinum is under 0:44.03.
+    assert_eq!(doc(&harness).current().times(toad), [4402, 5544, 6023]);
+    assert_eq!(history(&harness).len(), 2);
+
+    click(&mut harness, "Sapphire");
+    click(&mut harness, "Set relic from best time");
+    assert_eq!(doc(&harness).current().relic(toad), Some(Relic::Platinum));
+    assert_eq!(history(&harness).len(), 4);
+    // Both are done: the buttons do nothing more.
+    click(&mut harness, "Set relic from best time");
+    click(&mut harness, "Fill a time for this relic");
+    assert_eq!(history(&harness).len(), 4);
+}
+
+#[test]
+fn reset_asks_first_and_undo_restores_the_level() {
+    let mut harness = harness(app(selecting("test_saves/t6_after.sav", "deeptrouble")));
+    let deep = level("deeptrouble");
+    let before = doc(&harness).current().totals();
+    assert!(doc(&harness).current().entered(deep));
+    click(&mut harness, "Reset level…");
+    harness.get_by_label(
+        "Reset Deep Trouble to never played? Removes its crystal, gems, relic and times.",
+    );
+    harness.get_by_label("Not yet tested in game.");
+    click(&mut harness, "Cancel");
+    assert!(history(&harness).is_empty());
+
+    click(&mut harness, "Reset level…");
+    click(&mut harness, "Reset");
+    assert_eq!(history(&harness), ["Deep Trouble: reset to never played"]);
+    let save = doc(&harness).current();
+    assert!(!save.entered(deep));
+    let after = save.totals();
+    assert_eq!(after.crystals + 1, before.crystals);
+    assert_eq!(after.relics() + 1, before.relics());
+    assert!(after.percent() < before.percent());
+
+    press(&mut harness, Modifiers::COMMAND, Key::Z);
+    assert!(doc(&harness).current().entered(deep));
+    assert_eq!(doc(&harness).current().totals(), before);
+}
+
+#[test]
+fn the_boss_panel_toggles_defeat_ability_and_scenes() {
+    use nsane::crash3::Ability;
+    let mut harness = harness(app(selecting("saves/0019.sav", "ngin")));
+    let ngin = level("ngin");
+    click(&mut harness, "Defeated");
+    click(&mut harness, "Ability: Fruit Bazooka");
+    click(&mut harness, "C3_NGin_Intro");
+    let save = doc(&harness).current();
+    assert!(save.boss_defeated(ngin));
+    assert!(save.ability(Ability::Bazooka));
+    assert!(save.cutscene_seen("C3_NGin_Intro"));
+    assert_eq!(history(&harness).len(), 3);
+    // No time trial for a boss.
+    assert!(harness.query_by_label("Time trial").is_none());
+}
+
+#[test]
+fn the_invalid_time_view_shows_a_refused_entry() {
+    let options = Options {
+        view: Some(View::InvalidTime),
+        ..selecting("saves/0019.sav", "toadvillage")
+    };
+    let mut harness = harness(app(options));
+    assert_eq!(time_field(&harness, 2).value().as_deref(), Some("1:7x"));
+    assert!(history(&harness).is_empty());
+    // A valid time typed over it is applied.
+    type_time(&mut harness, 2, "1:10.00");
+    assert_eq!(
+        doc(&harness).current().times(level("toadvillage")),
+        [5544, 6023, 7000]
+    );
+}

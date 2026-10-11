@@ -11,15 +11,18 @@ use nsane::crash3::LevelId;
 pub enum View {
     /// The question asked before an unsaved document is closed.
     Unsaved,
+    /// A refused time in the selected level's third leaderboard field.
+    InvalidTime,
 }
 
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))] // set from the command line
 impl View {
-    pub const ALL: [View; 1] = [View::Unsaved];
+    pub const ALL: [View; 2] = [View::Unsaved, View::InvalidTime];
 
     pub fn name(self) -> &'static str {
         match self {
             View::Unsaved => "unsaved",
+            View::InvalidTime => "invalid-time",
         }
     }
 
@@ -66,7 +69,9 @@ usage: nsane-save-editor [options]
 
   --open FILE.sav        open a save
   --select LEVEL         select a level by its key, e.g. toadvillage
-  --view NAME            show a dialog at start: unsaved
+  --view NAME            set up a state at start: unsaved (the question
+                         before closing), invalid-time (a refused time
+                         typed for the selected level)
   --icon-gallery         show every icon in every state and size
   --theme light|dark     force a theme instead of following the system
   --size WxH             inner window size in points, e.g. 1280x800
@@ -213,6 +218,10 @@ mod tests {
         assert!(parse(&["--frobnicate"]).is_err());
         assert!(parse(&["--open"]).is_err());
         assert!(parse(&["--select", "nowhere"]).is_err());
+        assert_eq!(
+            parse(&["--view", "invalid-time"]).unwrap().view,
+            Some(View::InvalidTime)
+        );
         assert!(parse(&["--view", "nothing"]).is_err());
     }
 }

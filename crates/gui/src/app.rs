@@ -257,8 +257,14 @@ impl App {
         if let Some(path) = options.open {
             app.open_path(path);
         }
-        if let Some(View::Unsaved) = options.view {
-            app.dialog = Some(Dialog::Unsaved(Then::Open));
+        match options.view {
+            Some(View::Unsaved) => app.dialog = Some(Dialog::Unsaved(Then::Open)),
+            Some(View::InvalidTime) => {
+                if let (Some(file), Some(level)) = (&app.file, app.selected) {
+                    app.crash3.refused_time(&file.doc, level, 2, "1:7x");
+                }
+            }
+            None => {}
         }
         app
     }
@@ -811,7 +817,9 @@ impl App {
                 .resizable(true)
                 .default_size(300.0)
                 .min_size(200.0)
-                .show(ui, |ui| self.crash3.details(ui, doc, self.selected));
+                .show(ui, |ui| {
+                    self.crash3.details(ui, doc, self.selected, actions)
+                });
         }
         egui::CentralPanel::default().show(ui, |ui| {
             self.crash3.central(ui, doc, &mut self.selected, actions)

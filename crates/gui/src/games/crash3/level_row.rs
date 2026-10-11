@@ -6,7 +6,7 @@
 
 use egui::{Align, Button, Layout, RichText, Ui, Vec2};
 use nsane::Document;
-use nsane::crash3::tables::relic_times;
+use nsane::crash3::tables::{colored_gem_opens, relic_times, second_gem_hint};
 use nsane::crash3::{ABILITIES, Edit, GemColor, Kind, LevelId, Relic, format_time};
 
 use crate::app::Action;
@@ -203,7 +203,7 @@ pub fn gem(ui: &mut Ui, doc: &Document, level: LevelId, actions: &mut Vec<Action
 
 /// The second clear gem, in the ten levels that have one.
 pub fn second_gem(ui: &mut Ui, doc: &Document, level: LevelId, actions: &mut Vec<Action>) {
-    let Some(how) = second_gem_source(level) else {
+    let Some(how) = second_gem_hint(level) else {
         return empty(ui, 1);
     };
     let save = doc.current();
@@ -370,33 +370,20 @@ pub fn boss_icons(ui: &mut Ui, doc: &Document, level: LevelId, actions: &mut Vec
     }
 }
 
-/// How a level's second gem is earned (`docs/FORMAT.md` §3, "Second gems").
-pub fn second_gem_source(level: LevelId) -> Option<&'static str> {
-    if !level.level().second_gem {
-        return None;
-    }
-    Some(match level.key() {
-        "boneyard" => "red gem path",
-        "tombtime" => "purple gem path",
-        "dinomight" => "yellow gem path",
-        "sphynxinator" => "blue gem path",
-        "futurefrenzy" => "second entrance, level 29",
-        "gonetomorrow" => "green gem path",
-        "buglite" => "multicolored path, needs all five colored gems",
-        "area51" | "ringsofpower" => "win the race",
-        "futuretense" => "death route, needs some of the super powers",
-        _ => "second path",
-    })
-}
-
-/// The levels a colored gem opens a path in (`docs/FORMAT.md` §3).
-pub fn colored_gem_paths(color: GemColor) -> &'static str {
-    match color {
-        GemColor::Red => "Bone Yard and Bug Lite",
-        GemColor::Yellow => "Dino Might! (on to Eggipus Rex) and Bug Lite",
-        GemColor::Purple => "Tomb Time and Bug Lite",
-        GemColor::Blue => "Sphynxinator and Bug Lite",
-        GemColor::Green => "Gone Tomorrow and Bug Lite",
+/// The levels a colored gem opens a path in, as a phrase: "Dino Might! (on
+/// to Eggipus Rex) and Bug Lite".
+pub fn colored_gem_paths(color: GemColor) -> String {
+    let names: Vec<String> = colored_gem_opens(color)
+        .iter()
+        .map(|p| match p.leads_to {
+            Some(next) => format!("{} (on to {})", p.level.name(), next.name()),
+            None => p.level.name().to_owned(),
+        })
+        .collect();
+    match names.split_last() {
+        Some((last, [])) => last.clone(),
+        Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
+        None => String::new(),
     }
 }
 
@@ -424,16 +411,11 @@ mod tests {
     }
 
     #[test]
-    fn every_second_gem_says_how_it_is_earned() {
-        for level in LevelId::all() {
-            let source = second_gem_source(level);
-            assert_eq!(
-                source.is_some(),
-                level.level().second_gem,
-                "{}",
-                level.key()
-            );
-            assert_ne!(source, Some("second path"), "{}", level.key());
-        }
+    fn colored_gem_paths_read_as_a_phrase() {
+        assert_eq!(colored_gem_paths(GemColor::Red), "Bone Yard and Bug Lite");
+        assert_eq!(
+            colored_gem_paths(GemColor::Yellow),
+            "Dino Might! (on to Eggipus Rex) and Bug Lite"
+        );
     }
 }

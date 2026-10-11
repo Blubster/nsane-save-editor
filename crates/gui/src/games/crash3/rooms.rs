@@ -239,7 +239,7 @@ fn entrance_row(
 }
 
 /// How a secret level is reached (`docs/FORMAT.md` §7).
-fn secret_level_access(level: LevelId) -> &'static str {
+pub fn secret_level_access(level: LevelId) -> &'static str {
     match level.key() {
         "hotcoco" => "Reached through the alien road sign in Road Crash",
         "eggipusrex" => "Reached through the yellow gem path in Dino Might!",

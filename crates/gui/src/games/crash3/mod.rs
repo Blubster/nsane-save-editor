@@ -1,6 +1,7 @@
 //! Crash Bandicoot 3: Warped: the overview, the central area and the level
 //! details.
 
+mod level_panel;
 pub mod level_row;
 mod overview;
 mod rooms;
@@ -16,6 +17,7 @@ use crate::theme::SPACING;
 pub struct Crash3Ui {
     /// Lives being dragged or typed, applied when the user lets go.
     lives: Option<i32>,
+    panel: level_panel::LevelPanel,
 }
 
 impl Crash3Ui {
@@ -53,6 +55,12 @@ impl Crash3Ui {
             });
     }
 
+    /// Shows `text` refused in a leaderboard field of `level`, as if it had
+    /// been typed (`--view invalid-time`).
+    pub fn refused_time(&mut self, doc: &Document, level: LevelId, slot: usize, text: &str) {
+        self.panel.refused_time(doc, level, slot, text);
+    }
+
     pub fn central(
         &mut self,
         ui: &mut egui::Ui,
@@ -63,16 +71,15 @@ impl Crash3Ui {
         rooms::grid(ui, doc, selected, actions);
     }
 
-    pub fn details(&mut self, ui: &mut egui::Ui, _doc: &Document, selected: Option<LevelId>) {
+    pub fn details(
+        &mut self,
+        ui: &mut egui::Ui,
+        doc: &Document,
+        selected: Option<LevelId>,
+        actions: &mut Vec<Action>,
+    ) {
         ui.heading("Details");
         ui.add_space(SPACING);
-        match selected {
-            Some(level) => {
-                ui.label(egui::RichText::new(level.name()).strong());
-            }
-            None => {
-                ui.weak("Select a level to see its details.");
-            }
-        }
+        self.panel.show(ui, doc, selected, actions);
     }
 }
