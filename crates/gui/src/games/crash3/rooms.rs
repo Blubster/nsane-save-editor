@@ -384,12 +384,23 @@ fn entrance_row(
             target.name()
         );
         let text = RichText::new(format!("{} (alt.)", target.name())).italics();
-        if level_row::name_button(ui, m, *selected == Some(target), text, &tip) {
+        // No toggles: the name has their room, up to the level it enters.
+        let link = m.time_text(format!("level {target_number}")).weak();
+        let link_width = egui::WidgetText::from(link.clone())
+            .into_galley(
+                ui,
+                Some(egui::TextWrapMode::Extend),
+                f32::INFINITY,
+                egui::TextStyle::Body,
+            )
+            .size()
+            .x;
+        let width = ui.available_width() - link_width - ui.spacing().item_spacing.x;
+        if level_row::sized_name_button(ui, m, width, *selected == Some(target), text, &tip) {
             *selected = Some(target);
         }
-        level_row::empty(ui, m, level_row::SLOTS);
-        level_row::time_slot(ui, m, |ui| {
-            ui.weak(format!("level {target_number}"));
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            ui.label(link);
         });
     });
 }

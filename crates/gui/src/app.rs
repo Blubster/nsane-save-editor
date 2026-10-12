@@ -1879,6 +1879,11 @@ impl App {
         }
         layout::set(&ctx, self.class);
         let class = self.class;
+        if class == Class::Phone {
+            // As phones draw them: over the content, and only while it
+            // scrolls. The cards keep their width.
+            ui.style_mut().spacing.scroll = egui::style::ScrollStyle::floating();
+        }
         let dark = self.dark;
         if self.gallery_only {
             egui::CentralPanel::default().show(ui, |ui| self.gallery.ui(ui, &mut self.dark));

@@ -19,6 +19,8 @@ pub const ICON: f32 = 20.0;
 pub const NUMBER_WIDTH: f32 = 20.0;
 /// The best time, right-aligned.
 pub const TIME_WIDTH: f32 = 50.0;
+/// The best time of a phone, in the small font.
+const PHONE_TIME_WIDTH: f32 = 46.0;
 /// Icon slots after the name: crystal, clear gem, the level's other gem and
 /// relic. The other gem is the second gem or the colored gem: no level has
 /// both, as in the game, which shows two gems per level. A collectible a
@@ -29,24 +31,28 @@ pub const SLOTS: usize = 4;
 const GAP: f32 = 3.0;
 /// The slots and rows of a phone, large enough to tap.
 const PHONE_SLOT: f32 = 32.0;
-/// On a phone, rows narrower than this drop the best time.
-const TIME_MIN_ROW: f32 = 380.0;
+/// On a phone, rows narrower than this drop the best time: the longest
+/// name would no longer fit beside it. The rows of a 360-point-wide phone
+/// (326 points) keep it.
+pub const TIME_MIN_ROW: f32 = 324.0;
 /// A name never gets narrower than this.
 const MIN_NAME_WIDTH: f32 = 40.0;
 /// Each side of a name, in its button.
 pub const NAME_PADDING: f32 = 5.0;
 
 /// The sizes of a card's rows. On a phone the slots and the rows are large
-/// enough to tap, the icons keeping their size, and a card too narrow for
-/// the best time leaves it to the level's page.
+/// enough to tap, the icons keeping their size, the best time is in the
+/// small font, and a card too narrow for it leaves it to the level's page.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Metrics {
     /// The square each icon is centred in, and the least height of a row.
     pub slot: f32,
     /// Between the pieces of a row.
     pub gap: f32,
-    /// The best time is shown.
-    pub time: bool,
+    /// The width of the best time; 0 when it isn't shown.
+    pub time: f32,
+    /// The best time is in the small font.
+    pub small_time: bool,
 }
 
 impl Metrics {
@@ -56,12 +62,18 @@ impl Metrics {
             Class::Phone => Self {
                 slot: PHONE_SLOT,
                 gap: 0.0,
-                time: row_width >= TIME_MIN_ROW,
+                time: if row_width >= TIME_MIN_ROW {
+                    PHONE_TIME_WIDTH
+                } else {
+                    0.0
+                },
+                small_time: true,
             },
             Class::Wide | Class::Medium => Self {
                 slot: ICON,
                 gap: GAP,
-                time: true,
+                time: TIME_WIDTH,
+                small_time: false,
             },
         }
     }
@@ -78,8 +90,13 @@ impl Metrics {
 
     /// The icon slots and the time, after the name.
     pub fn trailing_width(self) -> f32 {
-        let time = if self.time { TIME_WIDTH } else { 0.0 };
-        SLOTS as f32 * (self.slot + self.gap) + time
+        SLOTS as f32 * (self.slot + self.gap) + self.time
+    }
+
+    /// A best time, or what takes its place, in the time's font.
+    pub fn time_text(self, text: impl Into<String>) -> RichText {
+        let text = RichText::new(text);
+        if self.small_time { text.small() } else { text }
     }
 
     /// The width of the names of rows `row_width` wide, as `name_button`
@@ -144,7 +161,7 @@ pub fn level_row(
                 second_gem(ui, doc, level, m, actions);
             }
             relic(ui, doc, level, m, actions);
-            time_slot(ui, m, |ui| best_time(ui, doc, level));
+            time_slot(ui, m, |ui| best_time(ui, doc, level, m));
         }
     });
 }
@@ -192,6 +209,19 @@ fn name(ui: &mut Ui, doc: &Document, level: LevelId, m: Metrics, selected: &mut 
 /// it was clicked.
 pub fn name_button(ui: &mut Ui, m: Metrics, is_selected: bool, text: RichText, tip: &str) -> bool {
     let width = m.name_width_after_number(ui.available_width());
+    sized_name_button(ui, m, width, is_selected, text, tip)
+}
+
+/// A selectable name `width` wide. Returns whether it was clicked.
+pub fn sized_name_button(
+    ui: &mut Ui,
+    m: Metrics,
+    width: f32,
+    is_selected: bool,
+    text: RichText,
+    tip: &str,
+) -> bool {
+    let width = width.max(MIN_NAME_WIDTH);
     fixed(ui, m, width, Layout::left_to_right(Align::Center), |ui| {
         // Narrow padding: the name keeps the room it can.
         ui.spacing_mut().button_padding.x = NAME_PADDING;
@@ -212,8 +242,8 @@ pub fn empty(ui: &mut Ui, m: Metrics, n: usize) {
 
 /// The time slot at the end of the row, when the row has one.
 pub fn time_slot(ui: &mut Ui, m: Metrics, add: impl FnOnce(&mut Ui)) {
-    if m.time {
-        fixed(ui, m, TIME_WIDTH, Layout::right_to_left(Align::Center), add);
+    if m.time > 0.0 {
+        fixed(ui, m, m.time, Layout::right_to_left(Align::Center), add);
     }
 }
 
@@ -416,7 +446,7 @@ fn relic(ui: &mut Ui, doc: &Document, level: LevelId, m: Metrics, actions: &mut 
 }
 
 /// The best time trial time, dimmed, or a dash.
-fn best_time(ui: &mut Ui, doc: &Document, level: LevelId) {
+fn best_time(ui: &mut Ui, doc: &Document, level: LevelId, m: Metrics) {
     let times = doc.current().times(level);
     match times.iter().min() {
         Some(&best) => {
@@ -425,11 +455,12 @@ fn best_time(ui: &mut Ui, doc: &Document, level: LevelId) {
                 sorted.sort_unstable();
                 sorted.into_iter().map(format_time).collect()
             };
-            ui.weak(format_time(best))
+            ui.label(m.time_text(format_time(best)).weak())
                 .on_hover_text(format!("Time trial: {}", all.join(", ")));
         }
         None => {
-            ui.weak("—").on_hover_text("No time trial time");
+            ui.label(m.time_text("—").weak())
+                .on_hover_text("No time trial time");
         }
     }
 }

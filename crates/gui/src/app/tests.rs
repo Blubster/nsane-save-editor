@@ -2375,30 +2375,35 @@ fn the_phone_diagnostics_sheet_shows_a_level() {
     harness.get_by_label("Ability: Fruit Bazooka");
 }
 
-/// The widest a row's name gets on screen: its text in the button's font,
+/// How wide a row's name is on screen: its text in the button's font,
 /// italic for the secret room's entrance rows, and the button's padding.
-fn widest_name(ctx: &Context) -> (f32, String) {
+fn name_width(ctx: &Context, text: &str, italics: bool) -> f32 {
     use crate::games::crash3::level_row::NAME_PADDING;
-    let font = ctx.global_style().text_styles[&egui::TextStyle::Button].clone();
-    let width = |text: String, italics: bool| {
-        let format = egui::TextFormat {
-            font_id: font.clone(),
-            italics,
-            ..Default::default()
-        };
-        let job = egui::text::LayoutJob::single_section(text.clone(), format);
-        let galley = ctx.fonts_mut(|f| f.layout_job(job));
-        (galley.size().x + 2.0 * NAME_PADDING, text)
+    let format = egui::TextFormat {
+        font_id: ctx.global_style().text_styles[&egui::TextStyle::Button].clone(),
+        italics,
+        ..Default::default()
     };
-    let names = LevelId::all().map(|l| width(l.name().to_owned(), false));
-    let entrances = nsane::crash3::SECRET_ROOM
-        .iter()
-        .filter(|e| e.level.level().warp_room != 6)
-        .map(|e| width(format!("{} (alt.)", e.level.name()), true));
-    names
-        .chain(entrances)
+    let job = egui::text::LayoutJob::single_section(text.to_owned(), format);
+    let galley = ctx.fonts_mut(|f| f.layout_job(job));
+    galley.size().x + 2.0 * NAME_PADDING
+}
+
+/// The widest name of the rows with toggles.
+fn widest_name(ctx: &Context) -> (f32, String) {
+    LevelId::all()
+        .map(|l| (name_width(ctx, l.name(), false), l.name().to_owned()))
         .max_by(|a, b| a.0.total_cmp(&b.0))
         .unwrap()
+}
+
+/// The names of the secret room's entrance rows, which have no toggles.
+fn entrance_names() -> Vec<String> {
+    nsane::crash3::SECRET_ROOM
+        .iter()
+        .filter(|e| e.level.level().warp_room != 6)
+        .map(|e| format!("{} (alt.)", e.level.name()))
+        .collect()
 }
 
 /// The space a name has in the row of `level`, from where the name starts
@@ -2415,15 +2420,29 @@ fn name_space(harness: &Harness<'_, App>, level: &str) -> f32 {
     crystal.left() - gap - name.left()
 }
 
+/// The widths of the entrance rows' names.
+fn entrance_widths(harness: &Harness<'_, App>) -> Vec<f32> {
+    entrance_names()
+        .iter()
+        .map(|name| harness.get_by_label(name).rect().width())
+        .collect()
+}
+
 /// No level name is cut at the reference sizes. A cut name keeps its whole
 /// accessible name, so the names are measured instead.
 #[test]
 fn no_level_name_is_cut() {
-    use crate::games::crash3::level_row::Metrics;
+    use crate::games::crash3::level_row::{Metrics, TIME_MIN_ROW};
     use crate::games::crash3::rooms::{CARD_INSET, MAX_CARD_WIDTH, MIN_CARD_WIDTH};
     let mut harness = sized(PHONE, opening(repo_file("tests/saves/game/0019.sav")));
     let (widest, name) = widest_name(&harness.ctx);
+    // The entrance rows have room to spare on a large window: their names
+    // are whole there.
+    harness.set_size(Vec2::new(1920.0, 1080.0));
+    harness.run_steps(3);
+    let whole = entrance_widths(&harness);
     let sizes = [
+        Vec2::new(320.0, 640.0),
         Vec2::new(360.0, 740.0),
         PHONE,
         Vec2::new(844.0, 390.0),
@@ -2440,6 +2459,11 @@ fn no_level_name_is_cut() {
             widest <= space,
             "{size:?}: {name} is {widest} wide, rows give {space}"
         );
+        assert_eq!(
+            entrance_widths(&harness),
+            whole,
+            "{size:?}: an entrance row"
+        );
     }
     // At 1280 the cards are as wide as they get: the computation agrees.
     let rows = MAX_CARD_WIDTH - CARD_INSET;
@@ -2448,6 +2472,9 @@ fn no_level_name_is_cut() {
     let rows = MIN_CARD_WIDTH - CARD_INSET;
     let space = Metrics::new(Class::Wide, rows).name_width(rows);
     assert!(widest <= space, "the narrowest card: {space}");
+    // The narrowest phone rows that keep the best time.
+    let space = Metrics::new(Class::Phone, TIME_MIN_ROW).name_width(TIME_MIN_ROW);
+    assert!(widest <= space, "the narrowest rows with a time: {space}");
     // The room's card beside a level's page.
     harness.state_mut().selected = Some(level("underpressure"));
     harness.run_steps(3);
@@ -2455,8 +2482,8 @@ fn no_level_name_is_cut() {
     assert!(widest <= space, "the page's card: {space}");
 }
 
-/// A phone's rows are large enough to tap; a phone held sideways keeps the
-/// best time, which an upright one leaves to the level's page.
+/// A phone's rows are large enough to tap, and keep the best time down to
+/// 360 points wide; a narrower one leaves it to the level's page.
 #[test]
 fn phone_rows_can_be_tapped() {
     let mut harness = sized(PHONE, opening(repo_file("tests/saves/game/0019.sav")));
@@ -2472,9 +2499,15 @@ fn phone_rows_can_be_tapped() {
             "{label}: {rect:?}"
         );
     }
+    harness.get_by_label("0:55.44");
+    harness.set_size(Vec2::new(360.0, 740.0));
+    harness.run_steps(3);
+    harness.get_by_label("0:55.44");
+    harness.set_size(Vec2::new(320.0, 640.0));
+    harness.run_steps(3);
     assert!(
         harness.query_by_label("0:55.44").is_none(),
-        "no best time upright"
+        "no best time at 320"
     );
     harness.state_mut().touch_screen = true;
     harness.set_size(Vec2::new(844.0, 390.0));
