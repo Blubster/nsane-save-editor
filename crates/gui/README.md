@@ -13,17 +13,31 @@ Open a save with the **Open** button, by dropping the file onto the window, or w
 
 ### Editing Crash 3
 
-The Crash 3 tab shows the overall progress on the left (percentage, lives, totals, bosses, super powers, the story and any problems found in the save) and the six warp rooms in the middle. In a room, each level is a row of icons: crystal, clear gem, then its second gem or its colored gem (no level has both, as in the game), where the level has them, then the relic and the best time trial time. Click an icon to add or remove it. A click on the relic moves to the next tier (none, sapphire, gold, platinum); a right-click picks one. Every click is one step that Ctrl+Z undoes. Hover over an icon to see what it is and what a click does. A click on a level's name, or on a boss in the overview, selects it.
+The Crash 3 tab shows the overall progress on the left (percentage, lives, totals, bosses, super powers, the story and any problems found in the save) and the six warp rooms in the middle. In a room, each level is a row of icons: crystal, clear gem, then its second gem or its colored gem (no level has both, as in the game), where the level has them, then the relic and the best time trial time. Click an icon to add or remove it. A click on the relic moves to the next tier (none, sapphire, gold, platinum); a right-click, or a long press on a touch screen, picks one. Every click is one step that Ctrl+Z undoes. Hover over an icon to see what it is and what a click does. A click on a level's name, or on a boss in the overview, opens the level's page (see [Layouts](#layouts)).
 
 Under the gem count, the overview toggles the five colored gems, each in the level it is found in, and the bonus gem the hub gives. A boss row has two toggles: the boss defeated, which opens the next warp room, and the super power the boss normally grants; the overview toggles the five super powers too. The padlock of a locked warp room unlocks the rooms up to it, optionally with the bosses' super powers and without their story scenes. The secret warp room's levels open with the total relic count, of any tier (5, 10, 15, 20 and 25 relics for levels 26 to 30): its card shows the count and the next threshold, and the padlock of a locked level gives relics to levels that have none until it opens. Both padlocks show the changes in a dialog before applying them. **Edit…** next to the story scenes count, in the overview, lists the hub story scenes step by step: a scene marked as seen doesn't play.
 
 The **Presets** menu applies a common goal in one step: complete everything (108%), the story up to a warp room, every relic at a tier, every super power on or off, every story scene seen or not. Each opens a dialog with its options and a preview of the changes, the resulting totals and any new diagnostics. **History**, next to undo and redo, lists every step; a click goes back or forward to one.
 
-The badges in the toolbar and the overview count the diagnostics (errors, warnings, notes). A click opens the diagnostics panel: **Fix** applies the suggested change as one step, **Show** selects the level concerned. While a Switch save is too large for its file (an error), Save is disabled.
+The badges in the toolbar and the overview count the diagnostics (errors, warnings, notes). A click opens the diagnostics panel: **Fix** applies the suggested change as one step, **Show** opens the page of the level concerned. While a Switch save is too large for its file (an error), Save is disabled.
 
 Saving unsaved changes first shows a review: every change since the file was opened, the totals recomputed when writing, the warnings left, and the backup that will be made. "Don't show this again" turns it off; the settings menu (⚙) turns it back on.
 
 **Convert to PC… / Convert to Switch…** writes a copy of the open save, unsaved changes included, for the other version of the game. The game data is copied into a save of that platform, the template: preferably one of your own saves from it, since it matches your game version, or the new-game save built into the editor. The dialog shows the totals of the converted save as read back from the bytes to write, and refuses to write if any game data would differ. The game keeps one file per save slot, `ALCHEMYXSAVE_<n>.sav` on PC and `MACK_<n>.sav` on the Switch, where Crash 3 uses slots 8 to 11; the suggested name is the file of the template's slot, or of the source's. To replace a slot, write over its file (a backup is made). Converted saves were checked in game in both directions.
+
+### Layouts
+
+The window adapts to its width.
+
+| Layout | Width | Top | Overview | Dialogs |
+|---|---|---|---|---|
+| Wide | 1224 points and more | the full toolbar, on one line | beside the warp rooms | centred |
+| Medium | 720 to 1224 points | a compact bar | beside the warp rooms | centred |
+| Phone | under 720 points, or a touch screen under 500 points tall (a phone held sideways) | a compact bar | a page of its own | sheets, the width of the screen |
+
+The compact bar holds the **☰** menu, the file name (shortened to fit) and its platform, and undo and redo; a medium window also shows the size budget, the change count and the diagnostics, a phone a dot while there are unsaved changes. The ☰ menu has the toolbar's actions: Open, Save, Save as, Convert, the presets, **History…** (the steps undo and redo can reach, in a dialog), the review setting, About and the theme. On a phone, a bar at the bottom switches between the overview, which also picks the game, and the rooms, and holds the diagnostics badges. The rows of a phone are larger to tap; the best time of an upright phone is on the level's page.
+
+**The level page.** The six warp room cards are the home view. A level opened from its name, a boss in the overview or a diagnostic's Show shows its page in their place: **‹ All rooms**, a tab per warp room, the room's card beside the details when the window is wide enough (‹ and › step through the room otherwise), then the level's collectibles, time trial, stats and reset. The details take two columns on a very wide window. A click on another row of the card shows that level, after applying a time being typed. Back to the cards, at the same scroll position: **‹ All rooms**, **Escape** (when no field is being typed in), the mouse's back button on the desktop, or the browser's Back on the web. While a dialog is open they wait. Opening another file goes back to the cards.
 
 ### In a browser
 
@@ -40,7 +54,7 @@ The settings menu (⚙) also opens **About**: the version, the license, and what
 
 ### Settings
 
-The app remembers the theme picked with the toolbar toggle, which side panels are shown on a narrow window, whether the review is shown before saving and, on the desktop, the folder of the last file opened or saved. They are kept in:
+The app remembers the theme picked with the toolbar toggle (or the ☰ menu), whether the review is shown before saving and, on the desktop, the folder of the last file opened or saved. They are kept in:
 
 | Platform | Place |
 |---|---|
@@ -72,11 +86,11 @@ The file dialogs go through the desktop portal (`xdg-desktop-portal`) over D-Bus
 |---|---|
 | `--open FILE.sav` | Open a save at start. |
 | `--apply EDITS.json` | Apply edits to it at start, one undo step each: a JSON list of edit ops, as in `tests/golden/scenarios.json`. |
-| `--select LEVEL` | Select a level by its key (`toadvillage`, `deeptrouble`, …). |
+| `--select LEVEL` | Open the page of a level by its key (`toadvillage`, `deeptrouble`, …). |
 | `--view NAME` | Set up a state at start: `unsaved` (the question asked before unsaved changes are lost), `invalid-time` (a refused time typed for the selected level), `unlock-dialog` (the dialog that unlocks the first locked warp room, as its padlock opens it), `cutscenes` (the story scenes dialog), `preset-108` and `preset-story3` (the dialogs of those presets), `diagnostics` (the diagnostics panel), `save-review` (the review shown before saving; nothing is written), `convert` (the conversion dialog; nothing is written), `about` (the About dialog). |
 | `--template FILE.sav` | The template picked in `--view convert`. |
 | `--theme light\|dark` | Force a theme instead of following the system. |
-| `--size WxH` | Inner window size in points, for example `1280x800`. |
+| `--size WxH` | Inner window size in points, for example `1280x800` (the default). |
 | `--maximized` | Start maximized. |
 | `--icon-gallery` | Show every icon in every state and size instead of the editor. |
 | `--export-icon DIR` | Write the app icon into `DIR`, then quit: `icon-<size>.png` from 16 to 256 pixels and `icon.ico`. |
@@ -101,7 +115,7 @@ nsane-save-editor --open tests/saves/game/0019.sav \
 
 The capture is the window's own rendering, at the display's scale, without the window frame.
 
-Without a window, an ignored test renders the main view (light and dark, at 1280×800 and 1024×720), a selected level and every `--view`, in both themes, to PNG files. It draws with wgpu and needs no display:
+Without a window, an ignored test renders the layouts to PNG files, in both themes: the main view at 360×740, 390×844, 844×390 (a phone held sideways), 768×1024, 1024×720, 1280×800 and 1920×1080; a level's page from 390×844 to 1920×1080; and on a phone, a boss's page, the overview page, the ☰ menu, a preset and the diagnostics; the empty window at 360×740 and 1280×800; and every `--view` at 1280×800. The files are named `<case>-<w>x<h>-<theme>.png`, for example `main-390x844-dark.png`. It draws with wgpu and needs no display:
 
 ```sh
 NSANE_RENDER_DIR=/tmp/renders cargo test -p gui renders -- --ignored

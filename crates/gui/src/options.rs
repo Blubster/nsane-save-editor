@@ -115,7 +115,8 @@ usage: nsane-save-editor [options]
   --open FILE.sav        open a save
   --apply EDITS.json     apply edits to it at start, one undo step each: a
                          JSON list of edit ops, as in tests/golden
-  --select LEVEL         select a level by its key, e.g. toadvillage
+  --select LEVEL         open the page of a level by its key, e.g.
+                         toadvillage
   --view NAME            set up a state at start: unsaved (the question
                          before closing), invalid-time (a refused time
                          typed for the selected level), unlock-dialog
