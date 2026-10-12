@@ -72,6 +72,8 @@ trunk build --release --public-url /nsane-save-editor/   # to serve them from a 
 
 **Checks.** `scripts/check.sh` runs formatting, lints, every test and the WebAssembly build. CI (`.github/workflows/ci.yml`) runs it on every push to `main` and every pull request, and builds the Windows, Linux and web versions. A `v*` tag also drafts a release with the three builds.
 
+**Pull requests.** Changes reach `main` only through a pull request whose checks pass and whose branch is up to date with `main`. Every commit subject follows [Conventional Commits](https://www.conventionalcommits.org): `type(scope): summary`, for example `fix(gui): keep the selection after undo`. `scripts/check-commits.sh` checks this before you push.
+
 ## How it works
 
 | Crate | What it does |
