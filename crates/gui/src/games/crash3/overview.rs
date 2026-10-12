@@ -1,6 +1,8 @@
-//! The overview panel: progress, totals, bosses, super powers, lives, the
-//! bonus gem, the story and the diagnostics. Totals are counted from the
-//! save as it is now; the stored summary is only rewritten when saving.
+//! The overview panel: progress and lives, the totals with the gems that
+//! belong to no single row of the grid (the five colored gems as a set, the
+//! bonus gem), bosses, super powers, the story and the diagnostics. Totals
+//! are counted from the save as it is now; the stored summary is only
+//! rewritten when saving.
 
 use egui::{Align, DragValue, Layout, RichText, Stroke, Ui, Vec2, WidgetInfo, WidgetType};
 use nsane::Document;
@@ -8,7 +10,9 @@ use nsane::crash3::tables::{
     MAX_BONUS_GEMS, MAX_BOSSES, MAX_CLEAR_GEMS, MAX_COLORED_GEMS, MAX_CRYSTALS, MAX_GEMS,
     MAX_PERCENT, MAX_RELICS, MAX_SECOND_GEMS,
 };
-use nsane::crash3::{ABILITIES, BOSSES, Edit, LevelId, PICKUP_LIVES_MAX, Relic, Severity, Totals};
+use nsane::crash3::{
+    ABILITIES, BOSSES, Edit, GemColor, LevelId, PICKUP_LIVES_MAX, Relic, Severity, Totals,
+};
 
 use super::{level_row, scenes};
 use crate::app::{Action, static_icon};
@@ -103,8 +107,9 @@ fn count_row(ui: &mut Ui, icon: Icon, name: &str, count: String, tip: String) {
     .on_hover_text(tip);
 }
 
-/// Crystals, gems and relics.
-pub fn totals(ui: &mut Ui, totals: &Totals) {
+/// Crystals, gems and relics, with the colored gems and the bonus gem under
+/// the gems.
+pub fn totals(ui: &mut Ui, doc: &Document, totals: &Totals, actions: &mut Vec<Action>) {
     count_row(
         ui,
         Icon::Crystal,
@@ -124,6 +129,8 @@ pub fn totals(ui: &mut Ui, totals: &Totals) {
             g.clear, g.second, g.colored, g.bonus
         ),
     );
+    colored_gems(ui, doc, actions);
+    bonus_gem(ui, doc, actions);
     ui.horizontal(|ui| {
         static_icon(ui, Icon::Relic(Relic::Gold), theme::ICON_MEDIUM);
         ui.label("Relics");
@@ -132,7 +139,7 @@ pub fn totals(ui: &mut Ui, totals: &Totals) {
         });
     });
     ui.horizontal(|ui| {
-        ui.add_space(theme::ICON_MEDIUM + ui.spacing().item_spacing.x);
+        indent(ui);
         for (relic, count) in [
             (Relic::Sapphire, totals.sapphire),
             (Relic::Gold, totals.gold),
@@ -141,6 +148,27 @@ pub fn totals(ui: &mut Ui, totals: &Totals) {
             static_icon(ui, Icon::Relic(relic), theme::ICON_SMALL)
                 .on_hover_text(format!("{count} {} relics", relic.name().to_lowercase()));
             ui.label(count.to_string());
+        }
+    });
+}
+
+/// Lines a sub-row up with the name of the row above, after its icon.
+fn indent(ui: &mut Ui) {
+    ui.add_space(theme::ICON_MEDIUM + ui.spacing().item_spacing.x);
+}
+
+/// The five colored gems, each toggled in the level it is found in. They
+/// open paths in other levels, so they are thought of as a set.
+fn colored_gems(ui: &mut Ui, doc: &Document, actions: &mut Vec<Action>) {
+    ui.horizontal(|ui| {
+        indent(ui);
+        for color in GemColor::ALL {
+            let Some(level) = LevelId::all().find(|l| l.level().colored_gem == Some(color)) else {
+                continue;
+            };
+            // Not the grid's name: each label is found once.
+            let name = format!("Overview: {} gem", color.key());
+            level_row::colored_gem_toggle(ui, doc, level, &name, theme::ICON_MEDIUM, actions);
         }
     });
 }
@@ -233,10 +261,11 @@ pub fn super_powers(ui: &mut Ui, doc: &Document, actions: &mut Vec<Action>) {
 }
 
 /// The bonus gem toggle, with a badge when the hub would give it now.
-pub fn bonus_gem(ui: &mut Ui, doc: &Document, actions: &mut Vec<Action>) {
+fn bonus_gem(ui: &mut Ui, doc: &Document, actions: &mut Vec<Action>) {
     let save = doc.current();
     let on = save.bonus_gem();
     ui.horizontal(|ui| {
+        indent(ui);
         let tip = format!(
             "The 47th gem, given in the hub for every other gem and gold or platinum \
              relics: {}. Click to {}.",

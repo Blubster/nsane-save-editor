@@ -138,13 +138,12 @@ impl Crash3Ui {
                 ui.heading("Overview");
                 ui.add_space(SPACING / 2.0);
                 overview::progress(ui, &totals);
+                ui.add_space(SPACING);
+                overview::lives(ui, doc, &mut self.lives, actions);
                 dialog::section(ui, "Collected");
-                overview::totals(ui, &totals);
+                overview::totals(ui, doc, &totals, actions);
                 overview::bosses(ui, doc, &totals, selected);
                 overview::super_powers(ui, doc, actions);
-                dialog::section(ui, "Lives and bonus gem");
-                overview::lives(ui, doc, &mut self.lives, actions);
-                overview::bonus_gem(ui, doc, actions);
                 overview::story(ui, doc, &mut self.scenes.open);
                 overview::diagnostics(ui, doc, &mut self.diagnostics.open);
             });

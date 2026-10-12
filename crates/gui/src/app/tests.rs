@@ -792,6 +792,47 @@ fn the_bonus_gem_badge_shows_when_it_is_due() {
     assert!(harness.query_by_label("due").is_none());
 }
 
+#[test]
+fn the_overview_toggles_the_colored_gems() {
+    use egui::accesskit::Toggled;
+    let mut harness = harness(opening(repo_file("tests/saves/game/0019.sav")));
+    for color in ["red", "yellow", "purple", "blue", "green"] {
+        harness.get_by_label(&format!("Overview: {color} gem"));
+    }
+    let toggled =
+        |h: &Harness<'_, App>, label: &str| h.get_by_label(label).accesskit_node().toggled();
+    assert_eq!(
+        toggled(&harness, "Tomb Wader: blue gem"),
+        Some(Toggled::False)
+    );
+    click(&mut harness, "Overview: blue gem");
+    assert_eq!(history(&harness), ["Tomb Wader: blue gem on"]);
+    assert!(doc(&harness).current().colored_gem(level("tombwader")));
+    // The grid's toggle is the same gem.
+    assert_eq!(
+        toggled(&harness, "Tomb Wader: blue gem"),
+        Some(Toggled::True)
+    );
+    assert_eq!(toggled(&harness, "Overview: blue gem"), Some(Toggled::True));
+    press(&mut harness, Modifiers::COMMAND, Key::Z);
+    assert!(!doc(&harness).current().colored_gem(level("tombwader")));
+}
+
+/// Lives are the first thing the overview edits: above the totals, in view
+/// in the smallest reference window.
+#[test]
+fn lives_come_first_in_the_overview() {
+    let mut harness = themed(
+        Harness::builder().with_size(Vec2::new(1024.0, 720.0)),
+        opening(repo_file("tests/saves/game/0019.sav")),
+    );
+    harness.run_steps(2);
+    let field = harness.get_by_role(Role::SpinButton).rect();
+    let collected = harness.get_by_label("Collected").rect();
+    assert!(field.bottom() < collected.top(), "{field:?} {collected:?}");
+    assert!(field.bottom() < 720.0 / 2.0, "{field:?}");
+}
+
 // ------------------------------------------------------------ level panel
 
 fn selecting(rel: &str, key: &str) -> Options {
