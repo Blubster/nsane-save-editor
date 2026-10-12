@@ -19,10 +19,11 @@ pub const ICON: f32 = 20.0;
 pub const NUMBER_WIDTH: f32 = 20.0;
 /// The best time, right-aligned.
 pub const TIME_WIDTH: f32 = 50.0;
-/// Icon slots after the name: crystal, clear gem, second gem, colored gem,
-/// relic. A collectible a level doesn't have leaves its slot empty, so the
-/// columns line up.
-pub const SLOTS: usize = 5;
+/// Icon slots after the name: crystal, clear gem, the level's other gem and
+/// relic. The other gem is the second gem or the colored gem: no level has
+/// both, as in the game, which shows two gems per level. A collectible a
+/// level doesn't have leaves its slot empty, so the columns line up.
+pub const SLOTS: usize = 4;
 /// Horizontal space between the pieces of a row.
 const GAP: f32 = 3.0;
 
@@ -69,8 +70,11 @@ pub fn level_row(
         } else {
             crystal(ui, doc, level, actions);
             gem(ui, doc, level, actions);
-            second_gem(ui, doc, level, actions);
-            colored_gem(ui, doc, level, actions);
+            if level.level().colored_gem.is_some() {
+                colored_gem(ui, doc, level, actions);
+            } else {
+                second_gem(ui, doc, level, actions);
+            }
             relic(ui, doc, level, actions);
             time_slot(ui, |ui| best_time(ui, doc, level));
         }
@@ -222,14 +226,33 @@ pub fn colored_gem(ui: &mut Ui, doc: &Document, level: LevelId, actions: &mut Ve
     let Some(color) = level.level().colored_gem else {
         return empty(ui, 1);
     };
+    let name = format!("{}: {} gem", level.name(), color.key());
+    colored_gem_toggle(ui, doc, level, &name, ICON, actions);
+}
+
+/// The toggle of the colored gem found in `level`, under `name`; the
+/// overview shows the five as well.
+pub fn colored_gem_toggle(
+    ui: &mut Ui,
+    doc: &Document,
+    level: LevelId,
+    name: &str,
+    size: f32,
+    actions: &mut Vec<Action>,
+) {
+    let Some(color) = level.level().colored_gem else {
+        return;
+    };
     let save = doc.current();
     let on = save.colored_gem(level);
     let icon = Icon::ColoredGem(color);
     let what = format!("{} (found in {})", icon.name(), level.name());
     let extra = format!("Opens paths in {}.", colored_gem_paths(color));
     let tip = toggle_tip(&what, on, save.entered(level), &extra);
-    let name = format!("{}: {}", level.name(), icon.name().to_lowercase());
-    if toggle(ui, icon, &name, on, tip) {
+    if icons::icon_toggle_named(ui, icon, name, on, true, size)
+        .on_hover_text(tip)
+        .clicked()
+    {
         push(actions, doc, Edit::SetColoredGem { level, on: !on });
     }
 }
@@ -411,6 +434,19 @@ mod tests {
                 None
             ]
         );
+    }
+
+    /// A row has one slot for the second gem or the colored gem.
+    #[test]
+    fn no_level_has_both_a_second_and_a_colored_gem() {
+        let levels = &nsane::crash3::LEVELS;
+        for l in levels {
+            assert!(!(l.second_gem && l.colored_gem.is_some()), "{}", l.key);
+        }
+        let with_other = levels
+            .iter()
+            .filter(|l| l.second_gem || l.colored_gem.is_some());
+        assert_eq!(with_other.count(), 10 + 5);
     }
 
     #[test]
