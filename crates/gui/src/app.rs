@@ -1310,8 +1310,8 @@ impl App {
         tip: &dyn Fn(&str, &KeyboardShortcut) -> String,
     ) {
         let width = MENU_WIDTH.min(ui.ctx().content_rect().width() - 24.0);
-        let response = ui
-            .menu_button("☰", |ui| {
+        let (response, _) = egui::containers::menu::MenuButton::from_button(symbol_button(ui, "☰"))
+            .ui(ui, |ui| {
                 ui.set_width(width);
                 self.file_buttons(ui, actions, tip);
                 if let Some(file) = &self.file {
@@ -1347,8 +1347,7 @@ impl App {
                     ui.weak("Debug");
                     ui.checkbox(&mut self.gallery_open, "Icon gallery");
                 }
-            })
-            .response;
+            });
         let response = response.on_hover_text("Menu");
         response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, "Menu"));
     }
@@ -1371,7 +1370,7 @@ impl App {
     ) {
         let undo = self.file.as_ref().and_then(|f| f.doc.history().last());
         let response = ui
-            .add_enabled(undo.is_some(), Button::new("⟲"))
+            .add_enabled(undo.is_some(), symbol_button(ui, "⟲"))
             .on_disabled_hover_text("Nothing to undo");
         let response = match undo {
             Some(label) => response.on_hover_text(tip(&format!("Undo: {label}"), &UNDO)),
@@ -1390,7 +1389,7 @@ impl App {
     ) {
         let redo = self.file.as_ref().and_then(|f| f.doc.redo_history().next());
         let response = ui
-            .add_enabled(redo.is_some(), Button::new("⟳"))
+            .add_enabled(redo.is_some(), symbol_button(ui, "⟳"))
             .on_disabled_hover_text("Nothing to redo");
         let response = match redo {
             Some(label) => response.on_hover_text(tip(&format!("Redo: {label}"), &REDO)),
@@ -1998,6 +1997,21 @@ fn central_frame(ui: &Ui) -> Frame {
 /// Around the central area of a phone.
 const PHONE_MARGIN: i8 = 8;
 
+/// The ☰, undo and redo of a phone's bar: as tall as the page buttons of
+/// its bottom bar, and square.
+const PHONE_BAR_BUTTON: f32 = PAGE_BUTTON_HEIGHT;
+/// Their symbols.
+const PHONE_BAR_SYMBOL: f32 = 20.0;
+
+/// A button showing `symbol`: on a phone, a square large enough to tap.
+fn symbol_button(ui: &Ui, symbol: &'static str) -> Button<'static> {
+    match layout::current(ui.ctx()) {
+        Class::Phone => Button::new(RichText::new(symbol).size(PHONE_BAR_SYMBOL))
+            .min_size(Vec2::splat(PHONE_BAR_BUTTON)),
+        Class::Wide | Class::Medium => Button::new(symbol),
+    }
+}
+
 /// An icon that only shows something, of `size` points.
 pub fn static_icon(ui: &mut Ui, icon: Icon, size: f32) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
@@ -2037,21 +2051,38 @@ fn file_name(ui: &mut Ui, file: &OpenFile, extend: bool) {
 /// The space on each side of the platform's name, in its pill.
 const PILL_MARGIN: f32 = 8.0;
 
+/// Above and below the platform's name, in its pill.
+const PILL_MARGIN_Y: f32 = 2.0;
+
 fn platform_pill(ui: &mut Ui, platform: nsane::Platform) {
     let pal = theme::palette(ui.visuals().dark_mode);
-    Frame::new()
-        .fill(pal.selection)
-        .corner_radius(theme::ROUNDING_SMALL)
-        .inner_margin(Margin::symmetric(PILL_MARGIN as i8, 2))
-        .show(ui, |ui| {
-            let text = theme::bold(platform.name()).color(pal.selected_text);
-            ui.add(egui::Label::new(text).extend());
-        })
-        .response
-        .on_hover_text(match platform {
-            nsane::Platform::Switch => "A Nintendo Switch save: written back at its fixed size",
-            nsane::Platform::Pc => "A PC save: written back at the size of its content",
-        });
+    let text = theme::bold(platform.name()).color(pal.selected_text);
+    // As tall as its text: in a row, a frame would take the row's height,
+    // which the larger buttons of a phone's bar raise.
+    let size = egui::WidgetText::from(text.clone())
+        .into_galley(
+            ui,
+            Some(egui::TextWrapMode::Extend),
+            f32::INFINITY,
+            egui::TextStyle::Body,
+        )
+        .size()
+        + 2.0 * Vec2::new(PILL_MARGIN, PILL_MARGIN_Y);
+    ui.allocate_ui_with_layout(size, Layout::left_to_right(Align::Center), |ui| {
+        Frame::new()
+            .fill(pal.selection)
+            .corner_radius(theme::ROUNDING_SMALL)
+            .inner_margin(Margin::symmetric(PILL_MARGIN as i8, PILL_MARGIN_Y as i8))
+            .show(ui, |ui| {
+                ui.add(egui::Label::new(text).extend());
+            })
+    })
+    .inner
+    .response
+    .on_hover_text(match platform {
+        nsane::Platform::Switch => "A Nintendo Switch save: written back at its fixed size",
+        nsane::Platform::Pc => "A PC save: written back at the size of its content",
+    });
 }
 
 /// "64 / 150 KB", for a Switch save.
