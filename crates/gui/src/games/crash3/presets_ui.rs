@@ -227,7 +227,7 @@ impl Presets {
             }
         }
         ui.separator();
-        ui.weak("Resetting a level is in its details.");
+        ui.weak("Resetting a level is on its page.");
     }
 
     pub fn dialog(&mut self, ctx: &egui::Context, doc: &Document, actions: &mut Vec<Action>) {

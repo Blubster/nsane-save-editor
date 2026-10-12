@@ -6,16 +6,13 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-/// Missing fields take their default, so that settings written by an older
-/// version still load.
+/// Missing fields take their default, and fields no longer known are
+/// skipped, so that settings written by another version still load.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Prefs {
     /// The theme last picked in the app; `None` follows the system.
     pub dark: Option<bool>,
-    /// On a narrow window, whether each side panel is shown.
-    pub show_overview: bool,
-    pub show_details: bool,
     /// Save without showing the review of the changes first.
     pub skip_save_review: bool,
     /// The folder of the last file opened or saved.
@@ -69,8 +66,6 @@ pub mod tests {
     fn round_trips() {
         let prefs = Prefs {
             dark: Some(false),
-            show_overview: true,
-            show_details: false,
             skip_save_review: true,
             last_dir: Some(PathBuf::from("/home/me/saves")),
         };
@@ -90,6 +85,16 @@ pub mod tests {
         storage.set_string(eframe::APP_KEY, "(dark: Some(true))".to_owned());
         let prefs = Prefs::load(Some(&storage));
         assert_eq!(prefs.dark, Some(true));
-        assert!(!prefs.show_overview && !prefs.skip_save_review);
+        assert!(!prefs.skip_save_review);
+        // written by a version that kept the side panels of a narrow window
+        storage.set_string(
+            eframe::APP_KEY,
+            "(dark: Some(false), show_overview: true, show_details: true, \
+             skip_save_review: true)"
+                .to_owned(),
+        );
+        let prefs = Prefs::load(Some(&storage));
+        assert_eq!(prefs.dark, Some(false));
+        assert!(prefs.skip_save_review);
     }
 }

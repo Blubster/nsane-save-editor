@@ -8,6 +8,7 @@ mod gallery;
 mod games;
 mod icons;
 mod io;
+mod layout;
 mod options;
 mod prefs;
 #[cfg(not(target_arch = "wasm32"))]

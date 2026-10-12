@@ -1,5 +1,5 @@
-//! The details of the selected level or boss: its collectibles, the time
-//! trial, what the save records about it, and the reset.
+//! The details of a level or boss, as its page shows them: its collectibles,
+//! the time trial, what the save records about it, and the reset.
 //!
 //! Like the rows, the panel only pushes edits. What it keeps between frames
 //! is what the user is typing and the reset question.
@@ -14,7 +14,7 @@ use nsane::crash3::tables::{
     CUTSCENES, bit, field, relic_counted_key, relic_times, second_gem_hint,
 };
 use nsane::crash3::{
-    ABILITIES, Crash3Save, Edit, Kind, LevelId, MAX_TIME_CS, RESET_LEVEL_VERIFIED, Relic,
+    ABILITIES, BOSSES, Crash3Save, Edit, Kind, LevelId, MAX_TIME_CS, RESET_LEVEL_VERIFIED, Relic,
     SECRET_ROOM, format_time, parse_time, relic_for_time,
 };
 use nsane::igb::FieldValue;
@@ -63,50 +63,51 @@ impl LevelPanel {
         self.confirm_reset.is_some()
     }
 
-    pub fn show(
-        &mut self,
-        ui: &mut Ui,
-        doc: &Document,
-        selected: Option<LevelId>,
-        actions: &mut Vec<Action>,
-    ) {
-        if self.level != selected {
+    /// Drops what the panel keeps when another level is shown, and the
+    /// texts typed for a leaderboard the save no longer holds (undo, redo,
+    /// another edit). Called before the level is drawn.
+    pub fn sync(&mut self, doc: &Document, level: LevelId) {
+        if self.level != Some(level) {
             *self = Self {
-                level: selected,
+                level: Some(level),
                 ..Self::default()
             };
         }
-        let Some(level) = selected else {
-            ui.weak("Select a level to see its details.");
-            return;
-        };
         let current = doc.current().times(level);
         for buffer in &mut self.times {
             if buffer.as_ref().is_some_and(|b| b.base != current) {
                 *buffer = None;
             }
         }
+    }
 
-        egui::ScrollArea::vertical()
-            .auto_shrink([false, true])
-            .show(ui, |ui| {
-                header(ui, level);
-                ui.separator();
-                if level.level().kind == Kind::Boss {
-                    boss(ui, doc, level, actions);
-                } else {
-                    collectibles(ui, doc, level, actions);
-                    ui.separator();
-                    self.time_trial(ui, doc, level, actions);
-                }
-                ui.separator();
-                stats(ui, doc.current(), level);
-                ui.separator();
-                if reset_button(ui, level) {
-                    self.confirm_reset = Some(level);
-                }
-            });
-        self.reset_dialog(ui, doc, actions);
+    /// The name and how the level is reached, then what can be edited: the
+    /// collectibles and the time trial, or the boss.
+    pub fn main_part(
+        &mut self,
+        ui: &mut Ui,
+        doc: &Document,
+        level: LevelId,
+        actions: &mut Vec<Action>,
+    ) {
+        header(ui, doc, level);
+        ui.separator();
+        if level.level().kind == Kind::Boss {
+            boss(ui, doc, level, actions);
+        } else {
+            collectibles(ui, doc, level, actions);
+            ui.separator();
+            self.time_trial(ui, doc, level, actions);
+        }
+    }
+
+    /// What the save records about the level, and the reset.
+    pub fn side_part(&mut self, ui: &mut Ui, doc: &Document, level: LevelId) {
+        stats(ui, doc.current(), level);
+        ui.separator();
+        if reset_button(ui, level) {
+            self.confirm_reset = Some(level);
+        }
     }
 
     /// Puts `text` in field `slot` of `level` as a refused entry. Does
@@ -312,13 +313,14 @@ impl LevelPanel {
         });
     }
 
-    fn reset_dialog(&mut self, ui: &mut Ui, doc: &Document, actions: &mut Vec<Action>) {
+    /// The question asked before a reset, while it is open.
+    pub fn reset_dialog(&mut self, ctx: &egui::Context, doc: &Document, actions: &mut Vec<Action>) {
         let Some(level) = self.confirm_reset else {
             return;
         };
         let mut close = false;
         let shown = Dialog::new("reset-level", "Reset level").width(420.0).show(
-            ui.ctx(),
+            ctx,
             |ui| {
                 dialog::wrapped(ui, reset_question(level));
                 if level.level().kind == Kind::Boss {
@@ -358,8 +360,10 @@ pub fn reset_question(level: LevelId) -> String {
     format!("Reset {} to never played? {what}", level.name())
 }
 
-/// Number, name, warp room and kind, and the other entrances.
-fn header(ui: &mut Ui, level: LevelId) {
+/// The name, then the number, the warp room and the kind, and what opens
+/// the level: the boss of a locked room, the relic count of the secret
+/// room, the other entrances.
+fn header(ui: &mut Ui, doc: &Document, level: LevelId) {
     let info = level.level();
     ui.heading(info.name);
     let room = match info.warp_room {
@@ -373,8 +377,22 @@ fn header(ui: &mut Ui, level: LevelId) {
         (Kind::Level, None) => "Level".to_owned(),
     };
     ui.label(format!("{kind} · {room}"));
+    let r = info.warp_room;
+    if (2..=5).contains(&r) && !rooms::room_open(doc, r) {
+        let boss = BOSSES[usize::from(r) - 2].name();
+        ui.weak(format!("Warp room {r} opens when {boss} is defeated."));
+    }
+    let relics = doc.current().totals().relics();
     for entry in SECRET_ROOM {
-        if entry.level == level && Some(entry.number) != info.number {
+        if entry.level != level {
+            continue;
+        }
+        if Some(entry.number) == info.number {
+            ui.weak(format!(
+                "Opens with {} relics (the save has {relics}).",
+                entry.relics
+            ));
+        } else {
             ui.weak(format!(
                 "Also entered from secret level {} ({} relics).",
                 entry.number, entry.relics
@@ -541,9 +559,6 @@ fn relic_selector(ui: &mut Ui, doc: &Document, level: LevelId, actions: &mut Vec
         .num_columns(4)
         .spacing(Vec2::new(4.0, 2.0))
         .show(ui, |ui| {
-            // Compact, so that the panel keeps its width whatever the
-            // thresholds: a wider panel would narrow the warp room grid.
-            ui.spacing_mut().button_padding.x = 6.0;
             for choice in choices {
                 let name = choice.map_or("None", Relic::name);
                 let tip = match choice {

@@ -15,7 +15,7 @@ use nsane::crash3::{
 };
 
 use super::{level_row, scenes};
-use crate::app::{Action, static_icon};
+use crate::app::{Action, Nav, static_icon};
 use crate::dialog;
 use crate::icons::{self, Boss, Icon, IconButton};
 use crate::theme::{self, SPACING};
@@ -190,8 +190,14 @@ fn counted_section(ui: &mut Ui, title: &str, count: String, tip: &str) {
     ui.add_space(2.0);
 }
 
-/// The defeated bosses. A click on one selects it.
-pub fn bosses(ui: &mut Ui, doc: &Document, totals: &Totals, selected: &mut Option<LevelId>) {
+/// The defeated bosses. A click on one asks for its page.
+pub fn bosses(
+    ui: &mut Ui,
+    doc: &Document,
+    totals: &Totals,
+    selected: Option<LevelId>,
+    nav: &mut Vec<Nav>,
+) {
     counted_section(
         ui,
         "Bosses",
@@ -203,22 +209,22 @@ pub fn bosses(ui: &mut Ui, doc: &Document, totals: &Totals, selected: &mut Optio
         for boss in Boss::ALL {
             let level = boss.level();
             let defeated = save.boss_defeated(level);
-            // Not the grid's or the details' names: each label is found once.
+            // Not the grid's or the page's names: each label is found once.
             let name = format!("Overview: {}", level.name());
             let response = ui
                 .add(
                     IconButton::new(Icon::Boss(boss), &name)
                         .owned(defeated)
-                        .selected(*selected == Some(level))
+                        .selected(selected == Some(level))
                         .size(theme::ICON_MEDIUM, icons::MIN_HIT),
                 )
                 .on_hover_text(format!(
-                    "{}: {}. Click to show its details.",
+                    "{}: {}. Click to show its page.",
                     level.name(),
                     if defeated { "defeated" } else { "not defeated" }
                 ));
             if response.clicked() {
-                *selected = Some(level);
+                nav.push(Nav::Select(level));
             }
         }
     });

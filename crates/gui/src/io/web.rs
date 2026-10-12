@@ -1,9 +1,12 @@
 //! Files in the browser: the open dialog, dropped files, downloads, and the
-//! question asked before the page is left with unsaved changes.
+//! question asked before the page is left with unsaved changes. Also the
+//! browser's Back, which closes a level's page.
 //!
 //! The browser only hands out a file's name and content, never its place on
 //! disk, so nothing is ever written over the original: a save is a download.
 
+use std::cell::Cell;
+use std::rc::Rc;
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use eframe::wasm_bindgen::closure::Closure;
@@ -190,4 +193,102 @@ impl LeaveGuard {
             _ => {}
         }
     }
+}
+
+/// Keeps an entry in the browser's history while a level's page is open, so
+/// that the browser's Back (a phone's back gesture, the mouse's back
+/// button) closes the page instead of leaving the site.
+pub struct BackButton {
+    /// Set by the `popstate` listener.
+    popped: Rc<Cell<bool>>,
+    listener: Option<Closure<dyn FnMut(web_sys::Event)>>,
+    /// `popstate`s still to come from the app's own `history.back()`.
+    ignore: u32,
+    /// The browser went back this frame: its history is already where the
+    /// page's closing would take it.
+    went_back: bool,
+    /// The page was open at the end of the last frame.
+    was_open: bool,
+}
+
+impl BackButton {
+    pub fn new(ctx: &Context) -> Self {
+        let popped = Rc::new(Cell::new(false));
+        let flag = popped.clone();
+        let ctx = ctx.clone();
+        let listener = Closure::<dyn FnMut(_)>::new(move |_: web_sys::Event| {
+            flag.set(true);
+            ctx.request_repaint();
+        });
+        let added = web_sys::window().map(|window| {
+            window.add_event_listener_with_callback("popstate", listener.as_ref().unchecked_ref())
+        });
+        let listener = match added {
+            Some(Ok(())) => Some(listener),
+            Some(Err(e)) => {
+                log::warn!("can't watch the browser's Back: {}", js_error(e));
+                None
+            }
+            None => None,
+        };
+        Self {
+            popped,
+            listener,
+            ignore: 0,
+            went_back: false,
+            was_open: false,
+        }
+    }
+
+    /// Whether the browser went back since the last frame, not counting the
+    /// app's own steps back.
+    pub fn take_popped(&mut self) -> bool {
+        if !self.popped.replace(false) {
+            return false;
+        }
+        if self.ignore > 0 {
+            self.ignore -= 1;
+            return false;
+        }
+        self.went_back = true;
+        true
+    }
+
+    /// The page stays open after all: its history entry comes back.
+    pub fn restore(&mut self) {
+        self.went_back = false;
+        if let Some(history) = history() {
+            let _ = history.push_state(&JsValue::NULL, "");
+        }
+    }
+
+    /// Follows the page at the end of a frame, whatever opened or closed
+    /// it: an entry while it is open, which the app takes back when it
+    /// closes the page itself.
+    pub fn sync(&mut self, open: bool) {
+        if self.listener.is_none() {
+            return;
+        }
+        match (self.was_open, open) {
+            (false, true) => {
+                if let Some(history) = history() {
+                    let _ = history.push_state(&JsValue::NULL, "");
+                }
+            }
+            (true, false) if !self.went_back => {
+                if let Some(history) = history()
+                    && history.back().is_ok()
+                {
+                    self.ignore += 1;
+                }
+            }
+            _ => {}
+        }
+        self.went_back = false;
+        self.was_open = open;
+    }
+}
+
+fn history() -> Option<web_sys::History> {
+    web_sys::window()?.history().ok()
 }

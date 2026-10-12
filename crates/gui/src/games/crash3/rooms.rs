@@ -18,7 +18,10 @@ use crate::icons::{self, Icon, IconButton, IconState};
 use crate::theme;
 
 /// The narrowest a card gets before the grid drops a column.
-const MIN_CARD_WIDTH: f32 = 330.0;
+const MIN_CARD_WIDTH: f32 = 350.0;
+/// The widest a card gets: on a wide window the grid is centred, so that
+/// the rows don't stretch.
+const MAX_CARD_WIDTH: f32 = 460.0;
 /// Space between cards.
 pub const CARD_GAP: f32 = 12.0;
 /// The relic counts that open the secret room's levels start here.
@@ -39,7 +42,8 @@ pub fn room_open(doc: &Document, room: u8) -> bool {
 }
 
 /// The six cards, laid out in as many columns as fit. A click on a padlock
-/// puts the dialog it opens in `open`.
+/// puts the dialog it opens in `open`. The scroll position is kept while a
+/// level's page is shown in its place.
 pub fn grid(
     ui: &mut Ui,
     doc: &Document,
@@ -47,26 +51,51 @@ pub fn grid(
     actions: &mut Vec<Action>,
     open: &mut Option<Bulk>,
 ) {
-    ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
-        let columns = columns_for(ui.available_width());
-        let rooms: Vec<u8> = (1..=6).collect();
-        for chunk in rooms.chunks(columns) {
-            // The gutter between columns is the item spacing.
-            ui.spacing_mut().item_spacing.x = CARD_GAP;
-            ui.columns(columns, |cols| {
-                for (ui, &room) in cols.iter_mut().zip(chunk) {
-                    ui.spacing_mut().item_spacing = theme::ITEM_SPACING;
-                    card(ui, |ui| {
-                        if room == 6 {
-                            secret_card(ui, doc, selected, actions, open);
-                        } else {
-                            room_card(ui, doc, room, selected, actions, open);
-                        }
-                    });
-                }
+    ScrollArea::vertical()
+        .id_salt("rooms-grid")
+        .auto_shrink(false)
+        .show(ui, |ui| {
+            let available = ui.available_width();
+            let columns = columns_for(available);
+            let n = columns as f32;
+            let width = (n * MAX_CARD_WIDTH + (n - 1.0) * CARD_GAP).min(available);
+            ui.horizontal_top(|ui| {
+                ui.add_space(((available - width) / 2.0).floor());
+                ui.vertical(|ui| {
+                    ui.set_width(width);
+                    let rooms: Vec<u8> = (1..=6).collect();
+                    for chunk in rooms.chunks(columns) {
+                        // The gutter between columns is the item spacing.
+                        ui.spacing_mut().item_spacing.x = CARD_GAP;
+                        ui.columns(columns, |cols| {
+                            for (ui, &room) in cols.iter_mut().zip(chunk) {
+                                ui.spacing_mut().item_spacing = theme::ITEM_SPACING;
+                                self::room(ui, doc, room, selected, actions, open);
+                            }
+                        });
+                        ui.spacing_mut().item_spacing = theme::ITEM_SPACING;
+                        ui.add_space(CARD_GAP - theme::ITEM_SPACING.y);
+                    }
+                });
             });
-            ui.spacing_mut().item_spacing = theme::ITEM_SPACING;
-            ui.add_space(CARD_GAP - theme::ITEM_SPACING.y);
+        });
+}
+
+/// The card of warp room `room` (1–5), or of the secret room (6), as the
+/// grid and a level's page show it.
+pub fn room(
+    ui: &mut Ui,
+    doc: &Document,
+    room: u8,
+    selected: &mut Option<LevelId>,
+    actions: &mut Vec<Action>,
+    open: &mut Option<Bulk>,
+) {
+    card(ui, |ui| {
+        if room == 6 {
+            secret_card(ui, doc, selected, actions, open);
+        } else {
+            room_card(ui, doc, room, selected, actions, open);
         }
     });
 }
@@ -299,7 +328,7 @@ fn entrance_row(
         lead(ui);
         level_row::number(ui, Some(entry.number));
         let tip = format!(
-            "Alternate entrance to level {target_number}, needs {} relics. Click to select {}.",
+            "Alternate entrance to level {target_number}, needs {} relics. Click to show {}.",
             entry.relics,
             target.name()
         );
@@ -331,7 +360,10 @@ mod tests {
     #[test]
     fn the_grid_drops_columns_as_the_window_narrows() {
         assert_eq!(columns_for(1400.0), 3);
-        assert_eq!(columns_for(700.0), 2);
+        assert_eq!(columns_for(1074.0), 3);
+        assert_eq!(columns_for(1073.0), 2);
+        assert_eq!(columns_for(720.0), 2);
+        assert_eq!(columns_for(711.0), 1);
         assert_eq!(columns_for(390.0), 1);
         assert_eq!(columns_for(100.0), 1);
     }

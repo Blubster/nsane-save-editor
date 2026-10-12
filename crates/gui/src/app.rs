@@ -1,4 +1,5 @@
-//! The window: toolbar, game tabs, the three panels, dialogs and toasts.
+//! The window: toolbar, game tabs, the overview, the warp room grid or a
+//! level's page, dialogs and toasts.
 //!
 //! Widgets never change the document: they push [`Action`]s, which run once
 //! the frame is drawn, and every edit goes through [`Document::apply`].
@@ -41,8 +42,6 @@ pub const PRIVACY: &str = "No data leaves your computer: the save is read and ed
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))] // the web keeps settings per site
 pub const APP_ID: &str = "nsane-save-editor";
 
-/// Below this window width the side panels collapse into toggles.
-const NARROW_WIDTH: f32 = 900.0;
 /// The size budget turns amber above this share of a Switch file.
 const BUDGET_WARNING_PERCENT: usize = 80;
 /// How long a toast stays, in seconds.
@@ -91,6 +90,17 @@ pub enum Action {
         label: String,
         edits: Vec<Edit>,
     },
+}
+
+/// A move between the views, applied once the frame is drawn: a leaderboard
+/// field being typed in commits its text when it loses focus, which it only
+/// does while it is still drawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Nav {
+    /// The page of this level, asked for by the overview or a diagnostic.
+    Select(LevelId),
+    /// Back from a level's page to the warp room grid.
+    Back,
 }
 
 /// What to do once unsaved changes are saved or discarded.
@@ -223,7 +233,14 @@ pub struct App {
     dark: bool,
     file: Option<OpenFile>,
     game: Game,
+    /// The level whose page is shown in place of the warp room grid.
     selected: Option<LevelId>,
+    /// Moves between the views asked for during the frame.
+    nav: Vec<Nav>,
+    /// A widget had keyboard focus at the end of the last frame. egui drops
+    /// the focus as soon as Escape is pressed, so this tells whether the
+    /// Escape was meant for a field.
+    had_focus: bool,
     crash3: Crash3Ui,
     dialog: Option<Dialog>,
     /// The conversion to the other platform, while its dialog is open.
@@ -251,6 +268,8 @@ pub struct App {
     inbox: crate::io::web::Inbox,
     #[cfg(target_arch = "wasm32")]
     leave_guard: crate::io::web::LeaveGuard,
+    #[cfg(target_arch = "wasm32")]
+    back_button: crate::io::web::BackButton,
     /// What the file dialogs of the conversion return in tests, in turn.
     #[cfg(test)]
     dialog_answers: std::collections::VecDeque<Option<PathBuf>>,
@@ -293,7 +312,9 @@ impl App {
             dark,
             file: None,
             game: Game::Crash3,
-            selected: options.select,
+            selected: None,
+            nav: Vec::new(),
+            had_focus: false,
             crash3: Crash3Ui::default(),
             dialog: None,
             convert: None,
@@ -312,6 +333,8 @@ impl App {
             inbox: Default::default(),
             #[cfg(target_arch = "wasm32")]
             leave_guard: Default::default(),
+            #[cfg(target_arch = "wasm32")]
+            back_button: crate::io::web::BackButton::new(ctx),
             #[cfg(test)]
             dialog_answers: Default::default(),
             #[cfg(test)]
@@ -325,6 +348,8 @@ impl App {
         if let Some(path) = &options.apply {
             app.apply_file(path);
         }
+        // After the file: opening one closes the level's page.
+        app.selected = options.select;
         match options.view {
             Some(View::Unsaved) => app.dialog = Some(Dialog::Unsaved(Then::Open)),
             Some(View::InvalidTime) => {
@@ -422,8 +447,9 @@ impl App {
         });
     }
 
-    /// Replaces the document with `bytes`, or explains why it can't. The open
-    /// document stays when the file is not a save. Returns whether it opened.
+    /// Replaces the document with `bytes`, back on the warp room grid, or
+    /// explains why it can't. The open document and its view stay when the
+    /// file is not a save. Returns whether it opened.
     fn open_bytes(
         &mut self,
         bytes: &[u8],
@@ -439,6 +465,7 @@ impl App {
                     change_count: None,
                 });
                 self.crash3.reset();
+                self.selected = None;
                 self.convert = None;
                 true
             }
@@ -953,6 +980,60 @@ impl App {
         }
     }
 
+    /// A modal is open: the ways back wait, and Escape belongs to it.
+    fn modal_open(&self, ctx: &Context) -> bool {
+        self.dialog.is_some()
+            || self.crash3.has_dialog()
+            || self.convert.is_some()
+            || egui::Popup::is_any_open(ctx)
+    }
+
+    /// Asks to close the level's page: the browser's Back, and the other
+    /// ways back. Ignored while a modal is open; returns whether the page
+    /// will close.
+    fn back_requested(&mut self, ctx: &Context) -> bool {
+        if self.selected.is_none() || self.modal_open(ctx) {
+            return false;
+        }
+        self.nav.push(Nav::Back);
+        true
+    }
+
+    /// Escape, when no field had focus, and the mouse's back button go back
+    /// from a level's page; so does the browser's Back.
+    fn ways_back(&mut self, ctx: &Context) {
+        #[cfg(target_arch = "wasm32")]
+        if self.back_button.take_popped() && self.selected.is_some() && !self.back_requested(ctx) {
+            // A modal stays open over the page: so does the page.
+            self.back_button.restore();
+        }
+        if self.selected.is_none() {
+            return;
+        }
+        let escape = !self.had_focus && ctx.input(|i| i.key_pressed(Key::Escape));
+        // In the browser, the mouse's back button is the browser's Back.
+        #[cfg(not(target_arch = "wasm32"))]
+        let mouse = ctx.input(|i| i.pointer.button_pressed(egui::PointerButton::Extra1));
+        #[cfg(target_arch = "wasm32")]
+        let mouse = false;
+        if (escape || mouse) && self.back_requested(ctx) {
+            ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape));
+        }
+    }
+
+    /// Applies the moves between the views asked for during the frame.
+    fn navigate(&mut self) {
+        for nav in std::mem::take(&mut self.nav) {
+            match nav {
+                Nav::Select(level) => self.selected = Some(level),
+                Nav::Back => {
+                    self.selected = None;
+                    self.crash3.close_level();
+                }
+            }
+        }
+    }
+
     /// A file dropped onto the window.
     fn dropped_files(&mut self, ctx: &Context, actions: &mut Vec<Action>) {
         let dropped = ctx.input(|i| i.raw.dropped_files.clone());
@@ -1236,7 +1317,7 @@ impl App {
         }
     }
 
-    fn game_tabs(&mut self, ui: &mut Ui, narrow: bool) {
+    fn game_tabs(&mut self, ui: &mut Ui) {
         egui::Panel::top("games")
             .frame(bar_frame(ui))
             .show(ui, |ui| {
@@ -1252,50 +1333,34 @@ impl App {
                             self.game = game;
                         }
                     }
-                    if narrow {
-                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            ui.toggle_value(&mut self.prefs.show_details, "Details");
-                            ui.toggle_value(&mut self.prefs.show_overview, "Overview");
-                        });
-                    }
                 });
             });
     }
 
     fn document_ui(&mut self, ui: &mut Ui, actions: &mut Vec<Action>) {
-        let narrow = ui.ctx().content_rect().width() < NARROW_WIDTH;
-        self.game_tabs(ui, narrow);
+        self.game_tabs(ui);
         let Some(file) = &self.file else {
             return;
         };
         let doc = &file.doc;
-        if !narrow || self.prefs.show_overview {
-            egui::Panel::left("overview")
-                .frame(side_frame(ui))
-                .resizable(true)
-                .default_size(240.0)
-                .min_size(180.0)
-                .show(ui, |ui| {
-                    self.crash3.overview(ui, doc, &mut self.selected, actions)
-                });
-        }
-        if !narrow || self.prefs.show_details {
-            egui::Panel::right("details")
-                .frame(side_frame(ui))
-                .resizable(true)
-                .default_size(300.0)
-                .min_size(200.0)
-                .show(ui, |ui| {
-                    self.crash3.details(ui, doc, self.selected, actions)
-                });
-        }
+        egui::Panel::left("overview")
+            .frame(side_frame(ui))
+            .resizable(true)
+            .default_size(240.0)
+            .min_size(180.0)
+            .show(ui, |ui| {
+                self.crash3
+                    .overview(ui, doc, self.selected, &mut self.nav, actions)
+            });
         egui::CentralPanel::default()
             .frame(central_frame(ui))
             .show(ui, |ui| {
-                self.crash3.central(ui, doc, &mut self.selected, actions)
+                self.crash3
+                    .central(ui, doc, &mut self.selected, &mut self.nav, actions)
             });
         let ctx = ui.ctx().clone();
-        self.crash3.windows(&ctx, doc, &mut self.selected, actions);
+        self.crash3
+            .windows(&ctx, doc, self.selected, &mut self.nav, actions);
     }
 
     fn dialogs(&mut self, ctx: &Context) {
@@ -1582,6 +1647,7 @@ impl App {
         } else {
             let mut actions = Vec::new();
             let deferred = std::mem::take(&mut self.deferred);
+            self.ways_back(&ctx);
             self.shortcuts(&ctx, &mut actions);
             self.dropped_files(&ctx, &mut actions);
             #[cfg(target_arch = "wasm32")]
@@ -1599,6 +1665,7 @@ impl App {
                         }
                     });
             }
+            self.navigate();
             self.convert_dialog(&ctx, &mut actions);
             self.dialogs(&ctx);
             self.toasts(&ctx);
@@ -1611,7 +1678,11 @@ impl App {
             self.run(&ctx, actions);
             self.update_title(&ctx);
             #[cfg(target_arch = "wasm32")]
-            self.leave_guard.set(self.is_dirty());
+            {
+                self.leave_guard.set(self.is_dirty());
+                self.back_button.sync(self.selected.is_some());
+            }
+            self.had_focus = ctx.memory(|m| m.focused().is_some());
         }
         if self.dark != dark {
             theme::apply(&ctx, self.dark);
@@ -1659,7 +1730,7 @@ fn bar_frame(ui: &Ui) -> Frame {
     Frame::side_top_panel(ui.style()).inner_margin(Margin::symmetric(theme::PANEL_MARGIN, 6))
 }
 
-/// The side panels: the overview and the details.
+/// The side panel: the overview.
 fn side_frame(ui: &Ui) -> Frame {
     Frame::side_top_panel(ui.style()).inner_margin(Margin::same(theme::PANEL_MARGIN))
 }

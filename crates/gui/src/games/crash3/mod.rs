@@ -1,8 +1,9 @@
-//! Crash Bandicoot 3: Warped: the overview, the warp room grid in the middle
-//! and the level details.
+//! Crash Bandicoot 3: Warped: the overview, and in the middle the warp room
+//! grid or a level's page.
 
 mod bulk;
 mod diagnostics_ui;
+mod level_page;
 mod level_panel;
 pub mod level_row;
 mod overview;
@@ -21,7 +22,7 @@ pub use transfer_ui::{Convert, Request as ConvertRequest, Written};
 use nsane::Document;
 use nsane::crash3::LevelId;
 
-use crate::app::Action;
+use crate::app::{Action, Nav};
 use crate::dialog;
 use crate::theme::SPACING;
 
@@ -46,6 +47,12 @@ impl Crash3Ui {
             diagnostics: std::mem::take(&mut self.diagnostics),
             ..Self::default()
         };
+    }
+
+    /// Drops what the level's page keeps (a time being typed, the reset
+    /// question) when it closes.
+    pub fn close_level(&mut self) {
+        self.panel = level_panel::LevelPanel::default();
     }
 
     /// Whether a question of this tab is open: shortcuts wait meanwhile.
@@ -90,15 +97,17 @@ impl Crash3Ui {
     }
 
     /// The windows over the editor: the diagnostics panel, and the preset,
-    /// bulk and story scenes dialogs.
+    /// bulk and story scenes dialogs. `shown` is the level whose page is in
+    /// view.
     pub fn windows(
         &mut self,
         ctx: &egui::Context,
         doc: &Document,
-        selected: &mut Option<LevelId>,
+        shown: Option<LevelId>,
+        nav: &mut Vec<Nav>,
         actions: &mut Vec<Action>,
     ) {
-        self.diagnostics.show(ctx, doc, selected, actions);
+        self.diagnostics.show(ctx, doc, shown, nav, actions);
         self.presets.dialog(ctx, doc, actions);
         self.bulk.show(ctx, doc, actions);
         self.scenes.show(ctx, doc, actions);
@@ -128,7 +137,8 @@ impl Crash3Ui {
         &mut self,
         ui: &mut egui::Ui,
         doc: &Document,
-        selected: &mut Option<LevelId>,
+        selected: Option<LevelId>,
+        nav: &mut Vec<Nav>,
         actions: &mut Vec<Action>,
     ) {
         let totals = doc.current().totals();
@@ -142,7 +152,7 @@ impl Crash3Ui {
                 overview::lives(ui, doc, &mut self.lives, actions);
                 dialog::section(ui, "Collected");
                 overview::totals(ui, doc, &totals, actions);
-                overview::bosses(ui, doc, &totals, selected);
+                overview::bosses(ui, doc, &totals, selected, nav);
                 overview::super_powers(ui, doc, actions);
                 overview::story(ui, doc, &mut self.scenes.open);
                 overview::diagnostics(ui, doc, &mut self.diagnostics.open);
@@ -155,30 +165,23 @@ impl Crash3Ui {
         self.panel.refused_time(doc, level, slot, text);
     }
 
-    /// The warp room grid.
+    /// The warp room grid, or the page of the selected level.
     pub fn central(
         &mut self,
         ui: &mut egui::Ui,
         doc: &Document,
         selected: &mut Option<LevelId>,
+        nav: &mut Vec<Nav>,
         actions: &mut Vec<Action>,
     ) {
         let mut open = None;
-        rooms::grid(ui, doc, selected, actions, &mut open);
+        if selected.is_some() {
+            level_page::show(ui, doc, selected, &mut self.panel, nav, actions, &mut open);
+        } else {
+            rooms::grid(ui, doc, selected, actions, &mut open);
+        }
         if let Some(bulk) = open {
             self.bulk.open(bulk);
         }
-    }
-
-    pub fn details(
-        &mut self,
-        ui: &mut egui::Ui,
-        doc: &Document,
-        selected: Option<LevelId>,
-        actions: &mut Vec<Action>,
-    ) {
-        ui.heading("Details");
-        ui.add_space(SPACING);
-        self.panel.show(ui, doc, selected, actions);
     }
 }

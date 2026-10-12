@@ -1,14 +1,14 @@
 //! The diagnostics panel: everything worth telling about the save, most
-//! severe first, each with a Fix (one undo step) and a Show (selects the
-//! level). It is a window beside the editor, not a modal, so that the
-//! levels and the undo shortcuts stay at hand while it is open.
+//! severe first, each with a Fix (one undo step) and a Show (the level's
+//! page). It is a window beside the editor, not a modal, so that the levels
+//! and the undo shortcuts stay at hand while it is open.
 
 use egui::{Button, Context, Response, RichText, Sense, Ui, Vec2, WidgetInfo, WidgetType};
 use nsane::Document;
 use nsane::crash3::{Diagnostic, LevelId, Severity};
 
 use super::preview::severity_icon;
-use crate::app::Action;
+use crate::app::{Action, Nav};
 use crate::dialog::plural;
 use crate::icons::{self, IconState};
 use crate::theme::{self, SPACING};
@@ -103,7 +103,8 @@ impl DiagnosticsPanel {
         &mut self,
         ctx: &Context,
         doc: &Document,
-        selected: &mut Option<LevelId>,
+        shown: Option<LevelId>,
+        nav: &mut Vec<Nav>,
         actions: &mut Vec<Action>,
     ) {
         let mut open = self.open;
@@ -116,12 +117,18 @@ impl DiagnosticsPanel {
             .default_height(420.0)
             .pivot(egui::Align2::RIGHT_TOP)
             .default_pos(ctx.content_rect().right_top() + Vec2::new(-24.0, 96.0))
-            .show(ctx, |ui| list(ui, doc, selected, actions));
+            .show(ctx, |ui| list(ui, doc, shown, nav, actions));
         self.open = open;
     }
 }
 
-fn list(ui: &mut Ui, doc: &Document, selected: &mut Option<LevelId>, actions: &mut Vec<Action>) {
+fn list(
+    ui: &mut Ui,
+    doc: &Document,
+    shown: Option<LevelId>,
+    nav: &mut Vec<Nav>,
+    actions: &mut Vec<Action>,
+) {
     let all = doc.diagnostics();
     if all.is_empty() {
         ui.label("No problems found.");
@@ -137,12 +144,18 @@ fn list(ui: &mut Ui, doc: &Document, selected: &mut Option<LevelId>, actions: &m
                 if i > 0 {
                     ui.separator();
                 }
-                entry(ui, d, selected, actions);
+                entry(ui, d, shown, nav, actions);
             }
         });
 }
 
-fn entry(ui: &mut Ui, d: &Diagnostic, selected: &mut Option<LevelId>, actions: &mut Vec<Action>) {
+fn entry(
+    ui: &mut Ui,
+    d: &Diagnostic,
+    shown: Option<LevelId>,
+    nav: &mut Vec<Nav>,
+    actions: &mut Vec<Action>,
+) {
     ui.horizontal(|ui| {
         crate::app::static_icon(ui, severity_icon(d.severity), theme::ICON_MEDIUM);
         ui.add(egui::Label::new(d.message.as_str()).wrap());
@@ -167,15 +180,15 @@ fn entry(ui: &mut Ui, d: &Diagnostic, selected: &mut Option<LevelId>, actions: &
             }
         }
         if let Some(level) = d.level {
-            let is_selected = *selected == Some(level);
+            let is_shown = shown == Some(level);
             let response = ui
-                .add_enabled(!is_selected, Button::new("Show"))
-                .on_hover_text(format!("Show {} in the details", level.name()))
-                .on_disabled_hover_text(format!("{} is shown in the details", level.name()));
+                .add_enabled(!is_shown, Button::new("Show"))
+                .on_hover_text(format!("Show {}", level.name()))
+                .on_disabled_hover_text(format!("{} is shown", level.name()));
             let name = format!("Show {}", level.name());
-            response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &name));
+            response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, !is_shown, &name));
             if response.clicked() {
-                *selected = Some(level);
+                nav.push(Nav::Select(level));
             }
         }
         if d.fix.is_none() {

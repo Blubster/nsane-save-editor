@@ -439,7 +439,7 @@ fn the_unsaved_view_and_a_selected_level() {
     }));
     harness.get_by_label("Unsaved changes");
     assert_eq!(harness.state().selected, LevelId::from_key("toadvillage"));
-    // In the warp room grid and in the details.
+    // The page: the row of the room's card, and the title.
     assert_eq!(harness.query_all_by_label("Toad Village").count(), 2);
 }
 
@@ -455,18 +455,6 @@ fn crash_1_and_2_are_disabled() {
             .accesskit_node()
             .is_disabled()
     );
-}
-
-#[test]
-fn narrow_windows_collapse_the_side_panels() {
-    let mut harness = harness(opening(repo_file("tests/saves/game/0019.sav")));
-    harness.get_by_role(Role::SpinButton);
-    harness.set_size(Vec2::new(600.0, 800.0));
-    harness.run_steps(2);
-    assert!(harness.query_by_role(Role::SpinButton).is_none());
-    harness.get_by_label("Overview").click();
-    harness.run_steps(2);
-    harness.get_by_role(Role::SpinButton);
 }
 
 #[test]
@@ -515,20 +503,14 @@ fn app_with_storage(storage: &MemoryStorage, options: Options) -> App {
 }
 
 #[test]
-fn theme_and_panels_survive_a_restart() {
+fn the_theme_survives_a_restart() {
     let mut storage = MemoryStorage::default();
     let mut first = harness(app_with_storage(
         &storage,
         opening_options("tests/saves/game/0019.sav"),
     ));
     let dark = first.state().dark;
-    first.set_size(Vec2::new(600.0, 800.0));
-    first.run_steps(2);
     first.get_by_label(if dark { "☀" } else { "🌙" }).click();
-    // The theme's text sizes widen the toolbar, which then wraps: the
-    // games bar moves down before it can be clicked.
-    first.run_steps(2);
-    first.get_by_label("Overview").click();
     first.run_steps(2);
     assert_eq!(first.state().dark, !dark);
     eframe::App::save(first.state_mut(), &mut storage);
@@ -536,11 +518,6 @@ fn theme_and_panels_survive_a_restart() {
 
     let second = app_with_storage(&storage, opening_options("tests/saves/game/0019.sav"));
     assert_eq!(second.dark, !dark);
-    assert!(second.prefs.show_overview && !second.prefs.show_details);
-    let mut second = harness(second);
-    second.set_size(Vec2::new(600.0, 800.0));
-    second.run_steps(2);
-    second.get_by_role(Role::SpinButton); // the overview shows, unasked
 
     // A theme given on the command line wins, and is not kept.
     let mut forced = harness(app_with_storage(
@@ -764,6 +741,9 @@ fn the_entrance_rows_select_their_level() {
     let mut harness = tall_harness(opening(repo_file("tests/saves/game/0019.sav")));
     click(&mut harness, "Hang'em High (alt.)");
     assert_eq!(harness.state().selected, Some(level("hangemhigh")));
+    // The page shows room 2's card: the secret room's is back on the grid.
+    harness.get_by_label("Hang'em High: crystal");
+    click(&mut harness, "All rooms");
     click(&mut harness, "Future Frenzy (alt.)");
     assert_eq!(harness.state().selected, Some(level("futurefrenzy")));
     assert!(history(&harness).is_empty());
@@ -1030,6 +1010,238 @@ fn the_invalid_time_view_shows_a_refused_entry() {
         doc(&harness).current().times(level("toadvillage")),
         [5544, 6023, 7000]
     );
+}
+
+// ------------------------------------------------------------ level page
+
+fn selected(harness: &Harness<'_, App>) -> Option<LevelId> {
+    harness.state().selected
+}
+
+/// Starts typing `text` in leaderboard field `slot`, without leaving it.
+fn start_typing_time(harness: &mut Harness<'_, App>, slot: usize, text: &str) {
+    time_field(harness, slot).click();
+    harness.run_steps(2);
+    time_field(harness, slot).type_text(text);
+    harness.run_steps(1);
+}
+
+#[test]
+fn a_level_opens_its_page_in_place_of_the_grid() {
+    let mut harness = harness(opening(repo_file("tests/saves/game/0019.sav")));
+    click(&mut harness, "Deep Trouble");
+    assert_eq!(selected(&harness), Some(level("deeptrouble")));
+    harness.get_by_label("All rooms");
+    let tab = harness.get_by_label("Show warp room 3");
+    assert_eq!(
+        tab.accesskit_node().toggled(),
+        Some(egui::accesskit::Toggled::True)
+    );
+    // The room's card, beside the details.
+    harness.get_by_label("Deep Trouble: crystal");
+    harness.get_by_label("Time trial");
+    assert!(harness.query_by_label("Toad Village").is_none(), "no grid");
+
+    click(&mut harness, "All rooms");
+    assert_eq!(selected(&harness), None);
+    harness.get_by_label("Toad Village");
+    assert!(harness.query_by_label("All rooms").is_none());
+}
+
+#[test]
+fn escape_and_the_mouse_back_button_go_back_to_the_grid() {
+    let mut harness = harness(opening(repo_file("tests/saves/game/0019.sav")));
+    click(&mut harness, "Deep Trouble");
+    press(&mut harness, Modifiers::NONE, Key::Escape);
+    assert_eq!(selected(&harness), None);
+
+    click(&mut harness, "Deep Trouble");
+    harness
+        .get_by_label("Time trial")
+        .click_button(egui::PointerButton::Extra1);
+    harness.run_steps(2);
+    assert_eq!(selected(&harness), None);
+    assert!(history(&harness).is_empty());
+}
+
+#[test]
+fn escape_in_a_time_field_drops_the_text_and_keeps_the_page() {
+    let mut harness = harness(app(selecting("tests/saves/game/0019.sav", "toadvillage")));
+    start_typing_time(&mut harness, 2, "1:10.00");
+    press(&mut harness, Modifiers::NONE, Key::Escape);
+    assert_eq!(selected(&harness), Some(level("toadvillage")));
+    assert!(history(&harness).is_empty());
+    assert_eq!(time_field(&harness, 2).value().unwrap_or_default(), "");
+    // Nothing has focus now: the next Escape goes back.
+    press(&mut harness, Modifiers::NONE, Key::Escape);
+    assert_eq!(selected(&harness), None);
+}
+
+#[test]
+fn escape_closes_the_reset_question_only() {
+    let mut harness = harness(app(selecting("tests/saves/game/0019.sav", "toadvillage")));
+    open_dialog(&mut harness, "Reset level…");
+    assert!(harness.state().crash3.has_dialog());
+    press(&mut harness, Modifiers::NONE, Key::Escape);
+    assert!(!harness.state().crash3.has_dialog());
+    assert_eq!(selected(&harness), Some(level("toadvillage")));
+    // The mouse's back button waits for the question too.
+    open_dialog(&mut harness, "Reset level…");
+    harness
+        .get_by_label("Time trial")
+        .click_button(egui::PointerButton::Extra1);
+    harness.run_steps(2);
+    assert_eq!(selected(&harness), Some(level("toadvillage")));
+}
+
+#[test]
+fn the_room_tabs_and_the_card_switch_level() {
+    let mut harness = harness(app(selecting("tests/saves/game/0019.sav", "deeptrouble")));
+    click(&mut harness, "Show warp room 4");
+    assert_eq!(selected(&harness), Some(level("sphynxinator")));
+    // A row of the room's card.
+    click(&mut harness, "Tell No Tales");
+    assert_eq!(selected(&harness), Some(level("tellnotales")));
+    click(&mut harness, "Show the secret warp room");
+    assert_eq!(selected(&harness), Some(level("skicrazed")));
+    // An entrance row shows its level, in its own room.
+    click(&mut harness, "Future Frenzy (alt.)");
+    assert_eq!(selected(&harness), Some(level("futurefrenzy")));
+    let tab = harness.get_by_label("Show warp room 4");
+    assert_eq!(
+        tab.accesskit_node().toggled(),
+        Some(egui::accesskit::Toggled::True)
+    );
+    assert!(history(&harness).is_empty(), "selecting is not an edit");
+}
+
+#[test]
+fn a_time_being_typed_is_applied_when_another_level_is_picked() {
+    let mut harness = harness(app(selecting("tests/saves/game/0019.sav", "toadvillage")));
+    start_typing_time(&mut harness, 2, "1:10.00");
+    harness.get_by_label("Under Pressure").click();
+    harness.run_steps(2);
+    assert_eq!(selected(&harness), Some(level("underpressure")));
+    assert_eq!(
+        doc(&harness).current().times(level("toadvillage")),
+        [5544, 6023, 7000]
+    );
+    assert_eq!(history(&harness).len(), 1);
+    // The new level's fields show its own leaderboard.
+    assert_eq!(time_field(&harness, 0).value().unwrap_or_default(), "");
+}
+
+#[test]
+fn a_toggle_on_the_room_card_is_one_step() {
+    let mut harness = harness(app(selecting("tests/saves/game/0019.sav", "deeptrouble")));
+    click(&mut harness, "High Time: crystal");
+    assert_eq!(history(&harness), ["High Time: crystal on"]);
+    assert_eq!(
+        selected(&harness),
+        Some(level("deeptrouble")),
+        "the page stays"
+    );
+    press(&mut harness, Modifiers::COMMAND, Key::Z);
+    assert!(!doc(&harness).current().crystal(level("hightime")));
+}
+
+/// Without the room's card, ‹ and › go through its rows.
+#[test]
+fn previous_and_next_step_through_the_room() {
+    let mut harness = themed(
+        Harness::builder().with_size(Vec2::new(800.0, 1000.0)),
+        app(selecting("tests/saves/game/0019.sav", "dinomight")),
+    );
+    harness.run_steps(2);
+    assert!(
+        harness.query_by_label("Deep Trouble: crystal").is_none(),
+        "no card"
+    );
+    assert!(disabled(&harness, "Previous level"));
+    for key in [
+        "deeptrouble",
+        "hightime",
+        "roadcrash",
+        "doubleheader",
+        "ntropy",
+    ] {
+        click(&mut harness, "Next level");
+        assert_eq!(selected(&harness), Some(level(key)));
+    }
+    assert!(disabled(&harness, "Next level"));
+    click(&mut harness, "Previous level");
+    assert_eq!(selected(&harness), Some(level("doubleheader")));
+}
+
+/// The grid is back where it was scrolled to, whether the page's details
+/// scroll beside the room's card or in the grid's place.
+#[test]
+fn the_grid_keeps_its_scroll_position() {
+    for size in [Vec2::new(1280.0, 800.0), Vec2::new(800.0, 1000.0)] {
+        let mut harness = themed(
+            Harness::builder().with_size(size),
+            opening(repo_file("tests/saves/game/0019.sav")),
+        );
+        harness.run_steps(2);
+        // Measured with the pointer over the overview: a hovered button
+        // grows by a point.
+        let top = |h: &mut Harness<'_, App>| {
+            h.hover_at(egui::pos2(20.0, size.y - 20.0));
+            h.run_steps(2);
+            h.get_by_label("Warp Room 3").rect().top()
+        };
+        let start = top(&mut harness);
+        harness.hover_at(harness.get_by_label("Warp Room 1").rect().center());
+        harness.event(egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: Vec2::new(0.0, -200.0),
+            phase: egui::TouchPhase::Move,
+            modifiers: Modifiers::NONE,
+        });
+        harness.run_steps(30);
+        let scrolled = top(&mut harness);
+        assert!(scrolled < start - 100.0, "{size:?}: {start} → {scrolled}");
+
+        click(&mut harness, "Deep Trouble");
+        // The details scroll on their own.
+        harness.get_by_label("Time trial");
+        click(&mut harness, "All rooms");
+        assert_eq!(top(&mut harness), scrolled, "{size:?}");
+    }
+}
+
+#[test]
+fn opening_a_file_closes_the_page() {
+    let mut harness = harness(app(selecting("tests/saves/game/0019.sav", "toadvillage")));
+    // Not a save: the document and its page stay.
+    harness.state_mut().open_path(repo_file("Cargo.toml"));
+    harness.run_steps(2);
+    assert!(matches!(harness.state().dialog, Some(Dialog::Error { .. })));
+    assert_eq!(selected(&harness), Some(level("toadvillage")));
+    click(&mut harness, "OK");
+    harness
+        .state_mut()
+        .open_path(repo_file("tests/saves/game/0018.sav"));
+    harness.run_steps(2);
+    assert_eq!(selected(&harness), None);
+    harness.get_by_label("Toad Village");
+}
+
+#[test]
+fn the_browser_back_closes_the_page_unless_a_modal_is_open() {
+    let mut harness = harness(app(selecting("tests/saves/game/0019.sav", "toadvillage")));
+    let ctx = harness.ctx.clone();
+    harness.state_mut().error("Test", "message");
+    harness.run_steps(2);
+    assert!(!harness.state_mut().back_requested(&ctx));
+    harness.run_steps(2);
+    assert_eq!(selected(&harness), Some(level("toadvillage")));
+    click(&mut harness, "OK");
+    assert!(harness.state_mut().back_requested(&ctx));
+    harness.run_steps(2);
+    assert_eq!(selected(&harness), None);
+    // With no page open, there is nothing to close.
+    assert!(!harness.state_mut().back_requested(&ctx));
 }
 
 // ------------------------------------------------ padlocks and story scenes
