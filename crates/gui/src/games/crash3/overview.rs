@@ -168,7 +168,8 @@ fn colored_gems(ui: &mut Ui, doc: &Document, actions: &mut Vec<Action>) {
             };
             // Not the grid's name: each label is found once.
             let name = format!("Overview: {} gem", color.key());
-            level_row::colored_gem_toggle(ui, doc, level, &name, theme::ICON_MEDIUM, actions);
+            let size = (theme::ICON_MEDIUM, theme::ICON_MEDIUM);
+            level_row::colored_gem_toggle(ui, doc, level, &name, size, actions);
         }
     });
 }

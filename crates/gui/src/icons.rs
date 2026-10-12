@@ -219,14 +219,29 @@ pub fn icon_toggle_named(
     enabled: bool,
     size: f32,
 ) -> Response {
+    icon_toggle_sized(ui, icon, name, on, enabled, size, size)
+}
+
+/// [`icon_toggle_named`] in a clickable square of `hit` points, larger than
+/// the icon on a touch screen; the icon is centred in it.
+pub fn icon_toggle_sized(
+    ui: &mut Ui,
+    icon: Icon,
+    name: &str,
+    on: bool,
+    enabled: bool,
+    size: f32,
+    hit: f32,
+) -> Response {
     let sense = if enabled {
         Sense::click()
     } else {
         Sense::hover()
     };
-    let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), sense);
+    let (hit_rect, response) = ui.allocate_exact_size(Vec2::splat(hit.max(size)), sense);
+    let rect = Rect::from_center_size(hit_rect.center(), Vec2::splat(size));
     response.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, enabled, on, name));
-    if ui.is_rect_visible(rect) {
+    if ui.is_rect_visible(hit_rect) {
         let dark = ui.visuals().dark_mode;
         let pal = theme::palette(dark);
         let hovered = enabled && (response.hovered() || response.has_focus());

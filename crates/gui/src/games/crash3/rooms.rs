@@ -11,17 +11,18 @@ use nsane::crash3::tables::SecretRoomLevel;
 use nsane::crash3::{BOSSES, Kind, LevelId, SECRET_ROOM};
 
 use super::bulk::Bulk;
-use super::level_row::{self, ICON};
+use super::level_row::{self, ICON, Metrics};
 use crate::app::{Action, static_icon};
 use crate::dialog::plural;
 use crate::icons::{self, Icon, IconButton, IconState};
+use crate::layout::{self, Class};
 use crate::theme;
 
 /// The narrowest a card gets before the grid drops a column.
-const MIN_CARD_WIDTH: f32 = 350.0;
+pub const MIN_CARD_WIDTH: f32 = 350.0;
 /// The widest a card gets: on a wide window the grid is centred, so that
 /// the rows don't stretch.
-const MAX_CARD_WIDTH: f32 = 460.0;
+pub const MAX_CARD_WIDTH: f32 = 460.0;
 /// Space between cards.
 pub const CARD_GAP: f32 = 12.0;
 /// The relic counts that open the secret room's levels start here.
@@ -100,10 +101,22 @@ pub fn room(
     });
 }
 
-/// Inside a card.
+/// Inside a card; less on a phone.
 pub const CARD_PADDING: i8 = 12;
+/// A card's border.
+const CARD_STROKE: f32 = 1.0;
+/// What a card's padding and border take from its width, but on a phone.
+#[cfg(test)]
+pub const CARD_INSET: f32 = 2.0 * (CARD_PADDING as f32 + CARD_STROKE);
+const PHONE_CARD_PADDING: i8 = 8;
+/// The clickable square of a padlock on a phone.
+const PHONE_HIT: f32 = 32.0;
 
 pub fn card(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
+    let padding = match layout::current(ui.ctx()) {
+        Class::Phone => PHONE_CARD_PADDING,
+        Class::Wide | Class::Medium => CARD_PADDING,
+    };
     let pal = theme::palette(ui.visuals().dark_mode);
     let shadow = if pal.dark {
         Shadow::NONE
@@ -117,21 +130,29 @@ pub fn card(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
     };
     Frame::new()
         .fill(pal.surface)
-        .stroke(Stroke::new(1.0, pal.border))
+        .stroke(Stroke::new(CARD_STROKE, pal.border))
         .corner_radius(theme::ROUNDING + 2)
         .shadow(shadow)
-        .inner_margin(Margin::same(CARD_PADDING))
+        .inner_margin(Margin::same(padding))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             add(ui);
         });
 }
 
+/// The clickable square of a room's padlock: larger on a phone.
+fn lock_hit(ui: &Ui) -> f32 {
+    match layout::current(ui.ctx()) {
+        Class::Phone => PHONE_HIT,
+        Class::Wide | Class::Medium => icons::MIN_HIT,
+    }
+}
+
 /// "Warp Room N", its lock and the right-hand summary. As tall as a
 /// clickable lock, so that the rows of cards side by side line up.
 fn header(ui: &mut Ui, title: &str, lock: impl FnOnce(&mut Ui), right: impl FnOnce(&mut Ui)) {
     ui.horizontal(|ui| {
-        ui.set_min_height(icons::MIN_HIT);
+        ui.set_min_height(lock_hit(ui));
         ui.label(theme::bold(title).size(theme::FONT_TITLE));
         lock(ui);
         ui.with_layout(Layout::right_to_left(Align::Center), right);
@@ -139,10 +160,16 @@ fn header(ui: &mut Ui, title: &str, lock: impl FnOnce(&mut Ui), right: impl FnOn
     ui.add_space(2.0);
 }
 
-/// A padlock that only shows a state, named for screen readers and tests.
-fn static_lock(ui: &mut Ui, open: bool, size: f32, name: &str, tip: &str) {
+/// A padlock that only shows a state, named for screen readers and tests,
+/// centred in a square of `space` points.
+fn static_lock(ui: &mut Ui, open: bool, (size, space): (f32, f32), name: &str, tip: &str) {
     let icon = if open { Icon::Unlock } else { Icon::Lock };
-    let response = static_icon(ui, icon, size);
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(space.max(size)), Sense::hover());
+    if ui.is_rect_visible(rect) {
+        let icon_rect = egui::Rect::from_center_size(rect.center(), Vec2::splat(size));
+        let dark = ui.visuals().dark_mode;
+        icons::paint(ui.painter(), icon_rect, icon, IconState::OWNED, dark);
+    }
     response.widget_info(|| WidgetInfo::labeled(WidgetType::Image, true, name));
     response.on_hover_text(tip);
 }
@@ -155,19 +182,21 @@ fn room_lock(ui: &mut Ui, doc: &Document, room: u8, open: &mut Option<Bulk>) {
         "Warp Room {room}: {}",
         if is_open { "open" } else { "locked" }
     );
+    let small = (theme::ICON_SMALL, theme::ICON_SMALL);
     if room == 1 {
-        return static_lock(ui, true, theme::ICON_SMALL, &name, "Open from the start");
+        return static_lock(ui, true, small, &name, "Open from the start");
     }
     let boss = BOSSES[usize::from(room) - 2].name();
     if is_open {
         let tip = format!(
             "Open: {boss} is defeated. To lock the room again, mark {boss} as not defeated."
         );
-        return static_lock(ui, true, theme::ICON_SMALL, &name, &tip);
+        return static_lock(ui, true, small, &name, &tip);
     }
     let tip = format!("Locked: opens when {boss} is defeated. Click to unlock up to room {room}…");
+    let hit = lock_hit(ui);
     if ui
-        .add(IconButton::new(Icon::Lock, &name))
+        .add(IconButton::new(Icon::Lock, &name).size(theme::ICON_SMALL, hit))
         .on_hover_text(tip)
         .clicked()
     {
@@ -199,8 +228,9 @@ fn room_card(
             banner(ui, &d.message);
         }
     }
+    let m = Metrics::of(ui);
     for level in levels {
-        level_row::level_row(ui, doc, level, selected, actions, |_| {});
+        level_row::level_row(ui, doc, level, m, selected, actions, None);
     }
 }
 
@@ -241,16 +271,22 @@ fn secret_card(
             "Secret Warp Room: {}",
             if first_open { "open" } else { "locked" }
         );
-        static_lock(ui, first_open, theme::ICON_SMALL, &name, &tip);
+        let small = (theme::ICON_SMALL, theme::ICON_SMALL);
+        static_lock(ui, first_open, small, &name, &tip);
     };
+    let count = plural(relics as usize, "relic", "relics");
+    let next = SECRET_ROOM
+        .iter()
+        .find(|e| relics < u32::from(e.relics))
+        .map(|e| format!("next level at {}", e.relics));
+    let tip = "Relics of any tier open the secret room's levels";
+    let mut next_below = None;
     header(ui, "Secret Warp Room", lock, |ui| {
-        let count = plural(relics as usize, "relic", "relics");
-        let next = SECRET_ROOM.iter().find(|e| relics < u32::from(e.relics));
-        let mut text = match next {
-            Some(e) => format!("{count} · next level at {}", e.relics),
+        let mut text = match &next {
+            Some(next) => format!("{count} · {next}"),
             None => count.clone(),
         };
-        // On a narrow card, the count alone: the padlocks show the rest.
+        // On a narrow card, the next level goes under the count.
         let font = egui::TextStyle::Body.resolve(ui.style());
         let width = ui
             .painter()
@@ -258,17 +294,23 @@ fn secret_card(
             .size()
             .x;
         if width > ui.available_width() - ui.spacing().item_spacing.x {
-            text = count;
+            text = count.clone();
+            next_below = next.clone();
         }
-        ui.label(text)
-            .on_hover_text("Relics of any tier open the secret room's levels");
+        ui.label(text).on_hover_text(tip);
     });
+    if let Some(next) = next_below {
+        ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+            ui.weak(next).on_hover_text(tip);
+        });
+    }
+    let m = Metrics::of(ui);
     for entry in SECRET_ROOM {
-        let lock = |ui: &mut Ui| secret_lock(ui, entry, relics, open);
+        let mut lock = |ui: &mut Ui| secret_lock(ui, entry, relics, m, open);
         if entry.level.level().warp_room == 6 {
-            level_row::level_row(ui, doc, entry.level, selected, actions, lock);
+            level_row::level_row(ui, doc, entry.level, m, selected, actions, Some(&mut lock));
         } else {
-            entrance_row(ui, entry, selected, lock);
+            entrance_row(ui, entry, m, selected, &mut lock);
         }
     }
     ui.add_space(4.0);
@@ -276,22 +318,31 @@ fn secret_card(
     for level in LevelId::all().filter(|l| l.level().kind == Kind::Secret) {
         let tip = secret_level_access(level);
         // Outlined, so that it reads as a note rather than a warning.
-        let lead = |ui: &mut Ui| {
-            let (rect, response) = ui.allocate_exact_size(Vec2::splat(ICON), Sense::hover());
+        let mut lead = |ui: &mut Ui| {
+            let (rect, response) = ui.allocate_exact_size(Vec2::splat(m.slot), Sense::hover());
+            let icon = egui::Rect::from_center_size(rect.center(), Vec2::splat(ICON));
             let dark = ui.visuals().dark_mode;
-            icons::paint(ui.painter(), rect, Icon::Info, IconState::MISSING, dark);
+            icons::paint(ui.painter(), icon, Icon::Info, IconState::MISSING, dark);
             response.on_hover_text(tip);
         };
-        level_row::level_row(ui, doc, level, selected, actions, lead);
+        level_row::level_row(ui, doc, level, m, selected, actions, Some(&mut lead));
     }
 }
 
-/// The lock of a secret room level, from the relic count: once locked, a
-/// click opens the dialog that reaches its relic count.
-fn secret_lock(ui: &mut Ui, entry: SecretRoomLevel, relics: u32, open: &mut Option<Bulk>) {
+/// The lock of a secret room level, from the relic count, in its row's
+/// number column: once locked, a click opens the dialog that reaches its
+/// relic count. Its tooltip gives the level's number.
+fn secret_lock(
+    ui: &mut Ui,
+    entry: SecretRoomLevel,
+    relics: u32,
+    m: Metrics,
+    open: &mut Option<Bulk>,
+) {
     let is_open = relics >= u32::from(entry.relics);
     let tip = format!(
-        "{}: opens with {} relics (the save has {relics})",
+        "Level {}. {}: opens with {} relics (the save has {relics})",
+        entry.number,
         if is_open { "Open" } else { "Locked" },
         entry.relics
     );
@@ -302,10 +353,10 @@ fn secret_lock(ui: &mut Ui, entry: SecretRoomLevel, relics: u32, open: &mut Opti
         if is_open { "open" } else { "locked" }
     );
     if is_open {
-        return static_lock(ui, true, ICON, &name, &tip);
+        return static_lock(ui, true, (ICON, m.slot), &name, &tip);
     }
     if ui
-        .add(IconButton::new(Icon::Lock, &name).size(ICON, ICON))
+        .add(IconButton::new(Icon::Lock, &name).size(ICON, m.slot))
         .on_hover_text(format!("{tip}. Click to open up to here…"))
         .clicked()
     {
@@ -319,25 +370,25 @@ fn secret_lock(ui: &mut Ui, entry: SecretRoomLevel, relics: u32, open: &mut Opti
 fn entrance_row(
     ui: &mut Ui,
     entry: SecretRoomLevel,
+    m: Metrics,
     selected: &mut Option<LevelId>,
-    lead: impl FnOnce(&mut Ui),
+    lead: &mut dyn FnMut(&mut Ui),
 ) {
     let target = entry.level;
     let target_number = target.level().number.unwrap_or(0);
-    level_row::row(ui, |ui| {
-        lead(ui);
-        level_row::number(ui, Some(entry.number));
+    level_row::row(ui, m, |ui| {
+        level_row::number_column(ui, m, lead);
         let tip = format!(
             "Alternate entrance to level {target_number}, needs {} relics. Click to show {}.",
             entry.relics,
             target.name()
         );
         let text = RichText::new(format!("{} (alt.)", target.name())).italics();
-        if level_row::name_button(ui, *selected == Some(target), text, &tip) {
+        if level_row::name_button(ui, m, *selected == Some(target), text, &tip) {
             *selected = Some(target);
         }
-        level_row::empty(ui, level_row::SLOTS);
-        level_row::time_slot(ui, |ui| {
+        level_row::empty(ui, m, level_row::SLOTS);
+        level_row::time_slot(ui, m, |ui| {
             ui.weak(format!("level {target_number}"));
         });
     });

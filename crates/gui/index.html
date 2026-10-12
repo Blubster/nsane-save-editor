@@ -39,7 +39,12 @@
             width: 100%;
         }
 
+        /* A long press is the relic menu, not the browser's text selection
+           or link menu. */
         canvas {
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
             margin-right: auto;
             margin-left: auto;
             display: block;

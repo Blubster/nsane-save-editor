@@ -1,6 +1,5 @@
 //! The pieces of a level's row: its name, the collectible toggles, the relic
-//! button and the best time. The warp room grid is made of them, and the
-//! level panel can reuse each piece on its own.
+//! button and the best time. The warp room cards are made of them.
 //!
 //! Every toggle pushes one edit; nothing here changes the document.
 
@@ -11,6 +10,7 @@ use nsane::crash3::{ABILITIES, Edit, GemColor, Kind, LevelId, Relic, format_time
 
 use crate::app::Action;
 use crate::icons::{self, Boss, Icon};
+use crate::layout::{self, Class};
 use crate::theme;
 
 /// Icon size in a row.
@@ -24,12 +24,75 @@ pub const TIME_WIDTH: f32 = 50.0;
 /// both, as in the game, which shows two gems per level. A collectible a
 /// level doesn't have leaves its slot empty, so the columns line up.
 pub const SLOTS: usize = 4;
-/// Horizontal space between the pieces of a row.
+/// Horizontal space between the pieces of a row; a phone's slots touch,
+/// their icons keeping 12 points apart.
 const GAP: f32 = 3.0;
+/// The slots and rows of a phone, large enough to tap.
+const PHONE_SLOT: f32 = 32.0;
+/// On a phone, rows narrower than this drop the best time.
+const TIME_MIN_ROW: f32 = 380.0;
+/// A name never gets narrower than this.
+const MIN_NAME_WIDTH: f32 = 40.0;
+/// Each side of a name, in its button.
+pub const NAME_PADDING: f32 = 5.0;
 
-/// Width taken by the icon slots and the time, after the name.
-pub fn trailing_width() -> f32 {
-    SLOTS as f32 * (ICON + GAP) + TIME_WIDTH
+/// The sizes of a card's rows. On a phone the slots and the rows are large
+/// enough to tap, the icons keeping their size, and a card too narrow for
+/// the best time leaves it to the level's page.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Metrics {
+    /// The square each icon is centred in, and the least height of a row.
+    pub slot: f32,
+    /// Between the pieces of a row.
+    pub gap: f32,
+    /// The best time is shown.
+    pub time: bool,
+}
+
+impl Metrics {
+    /// The rows of a card in `class` whose rows are `row_width` wide.
+    pub fn new(class: Class, row_width: f32) -> Self {
+        match class {
+            Class::Phone => Self {
+                slot: PHONE_SLOT,
+                gap: 0.0,
+                time: row_width >= TIME_MIN_ROW,
+            },
+            Class::Wide | Class::Medium => Self {
+                slot: ICON,
+                gap: GAP,
+                time: true,
+            },
+        }
+    }
+
+    /// The rows of the card whose content `ui` holds.
+    pub fn of(ui: &Ui) -> Self {
+        Self::new(layout::current(ui.ctx()), ui.available_width())
+    }
+
+    /// The number column, which holds the padlock on the secret card.
+    pub fn number_width(self) -> f32 {
+        NUMBER_WIDTH.max(self.slot)
+    }
+
+    /// The icon slots and the time, after the name.
+    pub fn trailing_width(self) -> f32 {
+        let time = if self.time { TIME_WIDTH } else { 0.0 };
+        SLOTS as f32 * (self.slot + self.gap) + time
+    }
+
+    /// The width of the names of rows `row_width` wide, as `name_button`
+    /// gives them after the number.
+    #[cfg(test)]
+    pub fn name_width(self, row_width: f32) -> f32 {
+        let after_number = row_width - self.number_width() - self.gap;
+        self.name_width_after_number(after_number)
+    }
+
+    fn name_width_after_number(self, available: f32) -> f32 {
+        (available - self.trailing_width() - self.gap).max(MIN_NAME_WIDTH)
+    }
 }
 
 /// Asks for `edit` as one undo step, labelled as the edit describes itself.
@@ -40,64 +103,75 @@ pub fn push(actions: &mut Vec<Action>, doc: &Document, edit: Edit) {
     });
 }
 
-/// A row of fixed slots: the pieces are laid out left to right, `GAP` apart.
-pub fn row<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
+/// A row of fixed slots: the pieces are laid out left to right, `m.gap`
+/// apart.
+pub fn row<R>(ui: &mut Ui, m: Metrics, add: impl FnOnce(&mut Ui) -> R) -> R {
     ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = GAP;
+        ui.spacing_mut().item_spacing.x = m.gap;
         add(ui)
     })
     .inner
 }
 
-/// A level, boss or secret level with all its toggles. `number` is shown in
-/// front of the name; the secret card puts a lock before it with `lead`.
+/// A level, boss or secret level with all its toggles. The number column
+/// shows the level number, or what `lead` draws instead: the secret card's
+/// padlocks.
 pub fn level_row(
     ui: &mut Ui,
     doc: &Document,
     level: LevelId,
+    m: Metrics,
     selected: &mut Option<LevelId>,
     actions: &mut Vec<Action>,
-    lead: impl FnOnce(&mut Ui),
+    lead: Option<&mut dyn FnMut(&mut Ui)>,
 ) {
-    row(ui, |ui| {
-        lead(ui);
-        number(ui, level.level().number);
-        name(ui, doc, level, selected);
+    row(ui, m, |ui| {
+        match lead {
+            Some(lead) => number_column(ui, m, lead),
+            None => number(ui, m, level.level().number),
+        }
+        name(ui, doc, level, m, selected);
         if level.level().kind == Kind::Boss {
-            boss_icons(ui, doc, level, actions);
-            empty(ui, SLOTS - 2);
-            time_slot(ui, |_| {});
+            boss_icons(ui, doc, level, m, actions);
+            empty(ui, m, SLOTS - 2);
+            time_slot(ui, m, |_| {});
         } else {
-            crystal(ui, doc, level, actions);
-            gem(ui, doc, level, actions);
+            crystal(ui, doc, level, m, actions);
+            gem(ui, doc, level, m, actions);
             if level.level().colored_gem.is_some() {
-                colored_gem(ui, doc, level, actions);
+                colored_gem(ui, doc, level, m, actions);
             } else {
-                second_gem(ui, doc, level, actions);
+                second_gem(ui, doc, level, m, actions);
             }
-            relic(ui, doc, level, actions);
-            time_slot(ui, |ui| best_time(ui, doc, level));
+            relic(ui, doc, level, m, actions);
+            time_slot(ui, m, |ui| best_time(ui, doc, level));
         }
     });
 }
 
-/// The level number, or nothing, right-aligned in its slot.
-pub fn number(ui: &mut Ui, number: Option<u8>) {
+/// The level number, or nothing, right-aligned in its column.
+pub fn number(ui: &mut Ui, m: Metrics, number: Option<u8>) {
+    number_column(ui, m, &mut |ui| {
+        if let Some(n) = number {
+            ui.weak(n.to_string());
+        }
+    });
+}
+
+/// The number column, holding what `add` draws, right-aligned.
+pub fn number_column(ui: &mut Ui, m: Metrics, add: &mut dyn FnMut(&mut Ui)) {
     fixed(
         ui,
-        NUMBER_WIDTH,
+        m,
+        m.number_width(),
         Layout::right_to_left(Align::Center),
-        |ui| {
-            if let Some(n) = number {
-                ui.weak(n.to_string());
-            }
-        },
+        add,
     );
 }
 
 /// The name, taking the width the slots after it leave. A click selects the
 /// level; a level never entered is dimmed.
-pub fn name(ui: &mut Ui, doc: &Document, level: LevelId, selected: &mut Option<LevelId>) {
+fn name(ui: &mut Ui, doc: &Document, level: LevelId, m: Metrics, selected: &mut Option<LevelId>) {
     let entered = doc.current().entered(level);
     let text = if entered {
         RichText::new(level.name())
@@ -109,18 +183,18 @@ pub fn name(ui: &mut Ui, doc: &Document, level: LevelId, selected: &mut Option<L
     } else {
         format!("Never entered. Show the details of {}", level.name())
     };
-    if name_button(ui, *selected == Some(level), text, &tip) {
+    if name_button(ui, m, *selected == Some(level), text, &tip) {
         *selected = Some(level);
     }
 }
 
 /// A selectable name that fills the space before the slots. Returns whether
 /// it was clicked.
-pub fn name_button(ui: &mut Ui, is_selected: bool, text: RichText, tip: &str) -> bool {
-    let width = (ui.available_width() - trailing_width() - GAP).max(40.0);
-    fixed(ui, width, Layout::left_to_right(Align::Center), |ui| {
+pub fn name_button(ui: &mut Ui, m: Metrics, is_selected: bool, text: RichText, tip: &str) -> bool {
+    let width = m.name_width_after_number(ui.available_width());
+    fixed(ui, m, width, Layout::left_to_right(Align::Center), |ui| {
         // Narrow padding: the name keeps the room it can.
-        ui.spacing_mut().button_padding.x = 5.0;
+        ui.spacing_mut().button_padding.x = NAME_PADDING;
         ui.add(Button::selectable(is_selected, text).truncate())
             .on_hover_text(tip)
             .clicked()
@@ -128,21 +202,29 @@ pub fn name_button(ui: &mut Ui, is_selected: bool, text: RichText, tip: &str) ->
 }
 
 /// Leaves `n` icon slots empty.
-pub fn empty(ui: &mut Ui, n: usize) {
+pub fn empty(ui: &mut Ui, m: Metrics, n: usize) {
     // A widget is followed by the item spacing; `add_space` isn't.
-    let slot = ICON + ui.spacing().item_spacing.x;
+    let slot = m.slot + ui.spacing().item_spacing.x;
     for _ in 0..n {
         ui.add_space(slot);
     }
 }
 
-/// The time slot at the end of the row.
-pub fn time_slot(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
-    fixed(ui, TIME_WIDTH, Layout::right_to_left(Align::Center), add);
+/// The time slot at the end of the row, when the row has one.
+pub fn time_slot(ui: &mut Ui, m: Metrics, add: impl FnOnce(&mut Ui)) {
+    if m.time {
+        fixed(ui, m, TIME_WIDTH, Layout::right_to_left(Align::Center), add);
+    }
 }
 
-fn fixed<R>(ui: &mut Ui, width: f32, layout: Layout, add: impl FnOnce(&mut Ui) -> R) -> R {
-    let height = ui.spacing().interact_size.y.max(ICON);
+fn fixed<R>(
+    ui: &mut Ui,
+    m: Metrics,
+    width: f32,
+    layout: Layout,
+    add: impl FnOnce(&mut Ui) -> R,
+) -> R {
+    let height = ui.spacing().interact_size.y.max(m.slot);
     ui.allocate_ui_with_layout(Vec2::new(width, height), layout, |ui| {
         ui.set_width(width);
         add(ui)
@@ -173,71 +255,72 @@ fn toggle_tip(what: &str, owned: bool, entered: bool, extra: &str) -> String {
 }
 
 /// A collectible toggle. Returns whether it was clicked.
-fn toggle(ui: &mut Ui, icon: Icon, name: &str, on: bool, tip: String) -> bool {
-    icons::icon_toggle_named(ui, icon, name, on, true, ICON)
+fn toggle(ui: &mut Ui, m: Metrics, icon: Icon, name: &str, on: bool, tip: String) -> bool {
+    icons::icon_toggle_sized(ui, icon, name, on, true, ICON, m.slot)
         .on_hover_text(tip)
         .clicked()
 }
 
 /// The crystal, for levels 1–25; an empty slot otherwise.
-pub fn crystal(ui: &mut Ui, doc: &Document, level: LevelId, actions: &mut Vec<Action>) {
+fn crystal(ui: &mut Ui, doc: &Document, level: LevelId, m: Metrics, actions: &mut Vec<Action>) {
     if !level.level().has_crystal() {
-        return empty(ui, 1);
+        return empty(ui, m, 1);
     }
     let save = doc.current();
     let on = save.crystal(level);
     let tip = toggle_tip("Crystal", on, save.entered(level), "");
     let name = format!("{}: crystal", level.name());
-    if toggle(ui, Icon::Crystal, &name, on, tip) {
+    if toggle(ui, m, Icon::Crystal, &name, on, tip) {
         push(actions, doc, Edit::SetCrystal { level, on: !on });
     }
 }
 
 /// The clear gem for breaking every box. Every level but the bosses has one.
-pub fn gem(ui: &mut Ui, doc: &Document, level: LevelId, actions: &mut Vec<Action>) {
+fn gem(ui: &mut Ui, doc: &Document, level: LevelId, m: Metrics, actions: &mut Vec<Action>) {
     if !level.level().has_relic() {
-        return empty(ui, 1);
+        return empty(ui, m, 1);
     }
     let save = doc.current();
     let on = save.gem(level);
     let tip = toggle_tip("Clear gem (break every box)", on, save.entered(level), "");
     let name = format!("{}: clear gem", level.name());
-    if toggle(ui, Icon::ClearGem, &name, on, tip) {
+    if toggle(ui, m, Icon::ClearGem, &name, on, tip) {
         push(actions, doc, Edit::SetGem { level, on: !on });
     }
 }
 
 /// The second clear gem, in the ten levels that have one.
-pub fn second_gem(ui: &mut Ui, doc: &Document, level: LevelId, actions: &mut Vec<Action>) {
+fn second_gem(ui: &mut Ui, doc: &Document, level: LevelId, m: Metrics, actions: &mut Vec<Action>) {
     let Some(how) = second_gem_hint(level) else {
-        return empty(ui, 1);
+        return empty(ui, m, 1);
     };
     let save = doc.current();
     let on = save.second_gem(level);
     let tip = toggle_tip(&format!("Second gem ({how})"), on, save.entered(level), "");
     let name = format!("{}: second gem", level.name());
-    if toggle(ui, Icon::ClearGem, &name, on, tip) {
+    if toggle(ui, m, Icon::ClearGem, &name, on, tip) {
         push(actions, doc, Edit::SetSecondGem { level, on: !on });
     }
 }
 
 /// The colored gem, in the five levels it is found in.
-pub fn colored_gem(ui: &mut Ui, doc: &Document, level: LevelId, actions: &mut Vec<Action>) {
+fn colored_gem(ui: &mut Ui, doc: &Document, level: LevelId, m: Metrics, actions: &mut Vec<Action>) {
     let Some(color) = level.level().colored_gem else {
-        return empty(ui, 1);
+        return empty(ui, m, 1);
     };
     let name = format!("{}: {} gem", level.name(), color.key());
-    colored_gem_toggle(ui, doc, level, &name, ICON, actions);
+    colored_gem_toggle(ui, doc, level, &name, (ICON, m.slot), actions);
 }
 
-/// The toggle of the colored gem found in `level`, under `name`; the
-/// overview shows the five as well.
+/// The toggle of the colored gem found in `level`, under `name`, of the
+/// icon size and clickable size `size`; the overview shows the five as
+/// well.
 pub fn colored_gem_toggle(
     ui: &mut Ui,
     doc: &Document,
     level: LevelId,
     name: &str,
-    size: f32,
+    (size, hit): (f32, f32),
     actions: &mut Vec<Action>,
 ) {
     let Some(color) = level.level().colored_gem else {
@@ -249,7 +332,7 @@ pub fn colored_gem_toggle(
     let what = format!("{} (found in {})", icon.name(), level.name());
     let extra = format!("Opens paths in {}.", colored_gem_paths(color));
     let tip = toggle_tip(&what, on, save.entered(level), &extra);
-    if icons::icon_toggle_named(ui, icon, name, on, true, size)
+    if icons::icon_toggle_sized(ui, icon, name, on, true, size, hit)
         .on_hover_text(tip)
         .clicked()
     {
@@ -275,10 +358,11 @@ fn relic_name(relic: Option<Relic>) -> String {
     }
 }
 
-/// The relic: a click moves to the next tier, a right-click picks one.
-pub fn relic(ui: &mut Ui, doc: &Document, level: LevelId, actions: &mut Vec<Action>) {
+/// The relic: a click moves to the next tier, a right-click (or a long
+/// press) picks one.
+fn relic(ui: &mut Ui, doc: &Document, level: LevelId, m: Metrics, actions: &mut Vec<Action>) {
     let Some(times) = relic_times(level) else {
-        return empty(ui, 1);
+        return empty(ui, m, 1);
     };
     let current = doc.current().relic(level);
     // With no relic, the outline is the tier a click gives, and hovering
@@ -298,8 +382,8 @@ pub fn relic(ui: &mut Ui, doc: &Document, level: LevelId, actions: &mut Vec<Acti
         format_time(times.platinum),
     );
     let name = format!("{}: relic", level.name());
-    let response =
-        icons::icon_toggle_named(ui, icon, &name, current.is_some(), true, ICON).on_hover_text(tip);
+    let response = icons::icon_toggle_sized(ui, icon, &name, current.is_some(), true, ICON, m.slot)
+        .on_hover_text(tip);
     if response.clicked() {
         push(actions, doc, Edit::SetRelic { level, relic: next });
     }
@@ -332,7 +416,7 @@ pub fn relic(ui: &mut Ui, doc: &Document, level: LevelId, actions: &mut Vec<Acti
 }
 
 /// The best time trial time, dimmed, or a dash.
-pub fn best_time(ui: &mut Ui, doc: &Document, level: LevelId) {
+fn best_time(ui: &mut Ui, doc: &Document, level: LevelId) {
     let times = doc.current().times(level);
     match times.iter().min() {
         Some(&best) => {
@@ -351,9 +435,9 @@ pub fn best_time(ui: &mut Ui, doc: &Document, level: LevelId) {
 }
 
 /// The boss and the ability his defeat normally grants.
-pub fn boss_icons(ui: &mut Ui, doc: &Document, level: LevelId, actions: &mut Vec<Action>) {
+fn boss_icons(ui: &mut Ui, doc: &Document, level: LevelId, m: Metrics, actions: &mut Vec<Action>) {
     let Some(boss) = Boss::of(level) else {
-        return empty(ui, 2);
+        return empty(ui, m, 2);
     };
     let save = doc.current();
     let defeated = save.boss_defeated(level);
@@ -368,8 +452,9 @@ pub fn boss_icons(ui: &mut Ui, doc: &Document, level: LevelId, actions: &mut Vec
         if defeated { "not defeated" } else { "defeated" },
     );
     let name = format!("{}: defeated", level.name());
-    let response = icons::icon_toggle_named(ui, Icon::Boss(boss), &name, defeated, true, ICON)
-        .on_hover_text(tip);
+    let icon = Icon::Boss(boss);
+    let response =
+        icons::icon_toggle_sized(ui, icon, &name, defeated, true, ICON, m.slot).on_hover_text(tip);
     if response.clicked() {
         let edit = Edit::SetBossDefeated {
             boss: level,
@@ -389,8 +474,9 @@ pub fn boss_icons(ui: &mut Ui, doc: &Document, level: LevelId, actions: &mut Vec
         if on { "off" } else { "on" },
     );
     let name = format!("{}: {}", level.name(), ability.name());
-    let response = icons::icon_toggle_named(ui, Icon::Ability(ability), &name, on, true, ICON)
-        .on_hover_text(tip);
+    let icon = Icon::Ability(ability);
+    let response =
+        icons::icon_toggle_sized(ui, icon, &name, on, true, ICON, m.slot).on_hover_text(tip);
     if response.clicked() {
         push(actions, doc, Edit::SetAbility { ability, on: !on });
     }

@@ -19,7 +19,7 @@ pub enum Class {
 /// The narrowest window where the full toolbar fits on one line, in its
 /// widest state: a Switch save with unsaved changes, every diagnostic
 /// severity, and the debug menu.
-pub const WIDE_MIN: f32 = 1240.0;
+pub const WIDE_MIN: f32 = 1224.0;
 /// Narrower windows are phones.
 pub const PHONE_MAX: f32 = 720.0;
 /// A touch screen this short, and narrower than `LANDSCAPE_PHONE_WIDTH`, is

@@ -10,7 +10,7 @@ mod overview;
 mod presets_ui;
 mod preview;
 mod review;
-mod rooms;
+pub mod rooms;
 mod scenes;
 pub mod transfer_ui;
 

@@ -41,6 +41,8 @@ fn opening_options(rel: &str) -> Options {
 /// A harness of `app` with the app's fonts and theme. The app styled the
 /// throwaway context it was made with, so the first frame styles the
 /// harness's own context and draws nothing: fonts apply on the next pass.
+/// The harness puts a margin around what it draws; the app gets the whole
+/// window, as in eframe.
 pub(super) fn themed(
     builder: egui_kittest::HarnessBuilder<App>,
     app: App,
@@ -49,7 +51,8 @@ pub(super) fn themed(
     let mut harness = builder.build_ui_state(
         move |ui, app: &mut App| {
             if styled {
-                app.show(ui);
+                let window = egui::UiBuilder::new().max_rect(ui.ctx().content_rect());
+                ui.scope_builder(window, |ui| app.show(ui));
             } else {
                 theme::fonts(ui.ctx());
                 theme::apply(ui.ctx(), app.dark);
@@ -2351,4 +2354,146 @@ fn the_phone_diagnostics_sheet_shows_a_level() {
     assert!(!harness.state().crash3.diagnostics_open());
     assert_eq!(selected(&harness), Some(level("ngin")));
     harness.get_by_label("Ability: Fruit Bazooka");
+}
+
+/// The widest a row's name gets on screen: its text in the button's font,
+/// italic for the secret room's entrance rows, and the button's padding.
+fn widest_name(ctx: &Context) -> (f32, String) {
+    use crate::games::crash3::level_row::NAME_PADDING;
+    let font = ctx.global_style().text_styles[&egui::TextStyle::Button].clone();
+    let width = |text: String, italics: bool| {
+        let format = egui::TextFormat {
+            font_id: font.clone(),
+            italics,
+            ..Default::default()
+        };
+        let job = egui::text::LayoutJob::single_section(text.clone(), format);
+        let galley = ctx.fonts_mut(|f| f.layout_job(job));
+        (galley.size().x + 2.0 * NAME_PADDING, text)
+    };
+    let names = LevelId::all().map(|l| width(l.name().to_owned(), false));
+    let entrances = nsane::crash3::SECRET_ROOM
+        .iter()
+        .filter(|e| e.level.level().warp_room != 6)
+        .map(|e| width(format!("{} (alt.)", e.level.name()), true));
+    names
+        .chain(entrances)
+        .max_by(|a, b| a.0.total_cmp(&b.0))
+        .unwrap()
+}
+
+/// The space a name has in the row of `level`, from where the name starts
+/// to where its row's crystal does.
+fn name_space(harness: &Harness<'_, App>, level: &str) -> f32 {
+    use crate::games::crash3::level_row::Metrics;
+    let gap = Metrics::new(layout::current(&harness.ctx), 0.0).gap;
+    let name = harness
+        .query_all_by_label(level)
+        .find(|n| n.accesskit_node().role() == Role::Button)
+        .expect("the row's name")
+        .rect();
+    let crystal = harness.get_by_label(&format!("{level}: crystal")).rect();
+    crystal.left() - gap - name.left()
+}
+
+/// No level name is cut at the reference sizes. A cut name keeps its whole
+/// accessible name, so the names are measured instead.
+#[test]
+fn no_level_name_is_cut() {
+    use crate::games::crash3::level_row::Metrics;
+    use crate::games::crash3::rooms::{CARD_INSET, MAX_CARD_WIDTH, MIN_CARD_WIDTH};
+    let mut harness = sized(PHONE, opening(repo_file("tests/saves/game/0019.sav")));
+    let (widest, name) = widest_name(&harness.ctx);
+    let sizes = [
+        Vec2::new(360.0, 740.0),
+        PHONE,
+        Vec2::new(844.0, 390.0),
+        Vec2::new(layout::WIDE_MIN, 800.0),
+        Vec2::new(1280.0, 800.0),
+    ];
+    let mut space = 0.0;
+    for size in sizes {
+        harness.state_mut().touch_screen = size.y < layout::LANDSCAPE_PHONE_HEIGHT;
+        harness.set_size(size);
+        harness.run_steps(3);
+        space = name_space(&harness, "Toad Village");
+        assert!(
+            widest <= space,
+            "{size:?}: {name} is {widest} wide, rows give {space}"
+        );
+    }
+    // At 1280 the cards are as wide as they get: the computation agrees.
+    let rows = MAX_CARD_WIDTH - CARD_INSET;
+    assert_eq!(Metrics::new(Class::Wide, rows).name_width(rows), space);
+    // The narrowest card of the grid, before it drops a column.
+    let rows = MIN_CARD_WIDTH - CARD_INSET;
+    let space = Metrics::new(Class::Wide, rows).name_width(rows);
+    assert!(widest <= space, "the narrowest card: {space}");
+    // The room's card beside a level's page.
+    harness.state_mut().selected = Some(level("underpressure"));
+    harness.run_steps(3);
+    let space = name_space(&harness, "Toad Village");
+    assert!(widest <= space, "the page's card: {space}");
+}
+
+/// A phone's rows are large enough to tap; a phone held sideways keeps the
+/// best time, which an upright one leaves to the level's page.
+#[test]
+fn phone_rows_can_be_tapped() {
+    let mut harness = sized(PHONE, opening(repo_file("tests/saves/game/0019.sav")));
+    for label in [
+        "Toad Village: crystal",
+        "Toad Village: relic",
+        "Tiny Tiger: defeated",
+        "Warp Room 4: locked",
+    ] {
+        let rect = harness.get_by_label(label).rect();
+        assert!(
+            rect.width() >= 32.0 && rect.height() >= 32.0,
+            "{label}: {rect:?}"
+        );
+    }
+    assert!(
+        harness.query_by_label("0:55.44").is_none(),
+        "no best time upright"
+    );
+    harness.state_mut().touch_screen = true;
+    harness.set_size(Vec2::new(844.0, 390.0));
+    harness.run_steps(3);
+    assert_eq!(layout::current(&harness.ctx), Class::Phone);
+    harness.get_by_label("0:55.44");
+}
+
+/// On a narrow card the secret room's next level goes under the relic
+/// count, instead of being dropped.
+#[test]
+fn the_next_secret_level_wraps_on_a_narrow_card() {
+    use nsane::crash3::Relic;
+    let mut harness = sized(
+        Vec2::new(360.0, 740.0),
+        opening(repo_file("tests/saves/game/0019.sav")),
+    );
+    let edits = [
+        "underpressure",
+        "orientexpress",
+        "boneyard",
+        "makinwaves",
+        "geewiz",
+        "hangemhigh",
+        "hogride",
+        "tombtime",
+        "midnightrun",
+        "dinomight",
+    ]
+    .map(|key| Edit::SetRelic {
+        level: level(key),
+        relic: Some(Relic::Sapphire),
+    });
+    harness.state_mut().apply("relics".into(), edits.to_vec());
+    harness.run_steps(3);
+    harness.get_by_label("11 relics");
+    harness.get_by_label("next level at 15");
+    harness.set_size(Vec2::new(1280.0, 800.0));
+    harness.run_steps(3);
+    harness.get_by_label("11 relics · next level at 15");
 }

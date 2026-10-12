@@ -1978,13 +1978,20 @@ fn side_frame(ui: &Ui) -> Frame {
 }
 
 /// The central area, a shade apart from the panels so that the cards on it
-/// stand out.
+/// stand out. A phone keeps its width for the cards.
 fn central_frame(ui: &Ui) -> Frame {
     let pal = theme::palette(ui.visuals().dark_mode);
+    let margin = match layout::current(ui.ctx()) {
+        Class::Phone => PHONE_MARGIN,
+        Class::Wide | Class::Medium => theme::PANEL_MARGIN,
+    };
     Frame::central_panel(ui.style())
         .fill(pal.canvas)
-        .inner_margin(Margin::same(theme::PANEL_MARGIN))
+        .inner_margin(Margin::same(margin))
 }
+
+/// Around the central area of a phone.
+const PHONE_MARGIN: i8 = 8;
 
 /// An icon that only shows something, of `size` points.
 pub fn static_icon(ui: &mut Ui, icon: Icon, size: f32) -> egui::Response {
