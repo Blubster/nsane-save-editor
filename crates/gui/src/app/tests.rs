@@ -834,6 +834,21 @@ fn a_small_laptop_shows_two_rooms_side_by_side() {
     assert_eq!(second.top(), first.top());
 }
 
+/// On a large window, the grid starts next to the overview instead of
+/// leaving a gap that grows with the window.
+#[test]
+fn the_grid_sits_next_to_the_overview() {
+    use crate::games::crash3::rooms::CARD_PADDING;
+    let harness = sized(
+        Vec2::new(1920.0, 1080.0),
+        opening(repo_file("tests/saves/game/0019.sav")),
+    );
+    // The central area's margin, then the card's border and padding.
+    let next_to = OVERVIEW_WIDTH + f32::from(theme::PANEL_MARGIN) + f32::from(CARD_PADDING) + 1.0;
+    let title = harness.get_by_label("Warp Room 1").rect();
+    assert_eq!(title.left(), next_to, "{title:?}");
+}
+
 // ------------------------------------------------------------ level panel
 
 fn selecting(rel: &str, key: &str) -> Options {

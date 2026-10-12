@@ -42,9 +42,10 @@ pub fn room_open(doc: &Document, room: u8) -> bool {
     room <= 1 || doc.current().boss_defeated(BOSSES[usize::from(room) - 2])
 }
 
-/// The six cards, laid out in as many columns as fit. A click on a padlock
-/// puts the dialog it opens in `open`. The scroll position is kept while a
-/// level's page is shown in its place.
+/// The six cards, laid out in as many columns as fit: next to the overview
+/// beside them, as a level's page is, or centred on a phone's page. A click
+/// on a padlock puts the dialog it opens in `open`. The scroll position is
+/// kept while a level's page is shown in its place.
 pub fn grid(
     ui: &mut Ui,
     doc: &Document,
@@ -60,8 +61,12 @@ pub fn grid(
             let columns = columns_for(available);
             let n = columns as f32;
             let width = (n * MAX_CARD_WIDTH + (n - 1.0) * CARD_GAP).min(available);
+            let left = match layout::current(ui.ctx()) {
+                Class::Phone => ((available - width) / 2.0).floor(),
+                Class::Wide | Class::Medium => 0.0,
+            };
             ui.horizontal_top(|ui| {
-                ui.add_space(((available - width) / 2.0).floor());
+                ui.add_space(left);
                 ui.vertical(|ui| {
                     ui.set_width(width);
                     let rooms: Vec<u8> = (1..=6).collect();

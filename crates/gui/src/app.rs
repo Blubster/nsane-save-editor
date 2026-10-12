@@ -1530,7 +1530,7 @@ impl App {
         let mut shown = self.selected;
         if class != Class::Phone {
             egui::Panel::left("overview")
-                .frame(central_frame(ui))
+                .frame(overview_frame(ui))
                 .show_separator_line(false)
                 .resizable(true)
                 .default_size(OVERVIEW_WIDTH)
@@ -1991,9 +1991,8 @@ fn bar_frame(ui: &Ui) -> Frame {
     Frame::side_top_panel(ui.style()).inner_margin(Margin::symmetric(theme::PANEL_MARGIN, 6))
 }
 
-/// The central area and the overview's column, a shade apart from the bars
-/// so that the cards on them stand out. A phone keeps its width for the
-/// cards.
+/// The central area, a shade apart from the bars so that the cards on it
+/// stand out. A phone keeps its width for the cards.
 fn central_frame(ui: &Ui) -> Frame {
     let pal = theme::palette(ui.visuals().dark_mode);
     let margin = match layout::current(ui.ctx()) {
@@ -2003,6 +2002,17 @@ fn central_frame(ui: &Ui) -> Frame {
     Frame::central_panel(ui.style())
         .fill(pal.canvas)
         .inner_margin(Margin::same(margin))
+}
+
+/// The overview's column, on the same background as the central area. No
+/// margin on its right: the central area's keeps the overview's card one
+/// gap of the grid away from the rooms.
+fn overview_frame(ui: &Ui) -> Frame {
+    let frame = central_frame(ui);
+    frame.inner_margin(Margin {
+        right: 0,
+        ..frame.inner_margin
+    })
 }
 
 /// Around the central area of a phone.
