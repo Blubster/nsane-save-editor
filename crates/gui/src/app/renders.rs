@@ -1,6 +1,7 @@
 //! Renders of the window for screenshots, drawn with wgpu and no window: the
-//! main view in both themes at two sizes, a selected level, and every
-//! `--view` in both themes. Ignored by default:
+//! main view at every reference size, from phones to a large desktop, a
+//! level's page, the phone's pages and sheets, and every `--view`, each in
+//! both themes. Ignored by default:
 //!
 //! ```text
 //! NSANE_RENDER_DIR=/tmp/renders cargo test -p gui renders -- --ignored
@@ -11,20 +12,43 @@ use std::io::BufWriter;
 use std::path::Path;
 
 use egui_kittest::Harness;
+use egui_kittest::kittest::Queryable as _;
 
 use super::tests::themed;
 use super::*;
 use crate::test_util::repo_file;
 
 const WIDE: Vec2 = Vec2::new(1280.0, 800.0);
-const MEDIUM: Vec2 = Vec2::new(1024.0, 720.0);
+const PHONE: Vec2 = Vec2::new(390.0, 844.0);
 
-/// One render: the app as `options` sets it up, then `setup`.
+/// The reference sizes: phones upright and sideways, a tablet, a small and
+/// a common laptop, a large desktop.
+const SIZES: [Vec2; 7] = [
+    Vec2::new(360.0, 740.0),
+    PHONE,
+    Vec2::new(844.0, 390.0),
+    Vec2::new(768.0, 1024.0),
+    Vec2::new(1024.0, 720.0),
+    WIDE,
+    Vec2::new(1920.0, 1080.0),
+];
+
+/// One render: the app as `options` sets it up, then `setup`, then a click
+/// on the widget named `click`.
 struct Case {
     name: String,
     size: Vec2,
     options: Options,
     setup: fn(&mut App),
+    click: Option<&'static str>,
+}
+
+impl Case {
+    /// Renders run natively, without a touch screen: a short window is a
+    /// phone held sideways only when it says it has one.
+    fn touch_screen(&self) -> bool {
+        self.size.y < crate::layout::LANDSCAPE_PHONE_HEIGHT
+    }
 }
 
 fn case(name: &str, size: Vec2, options: Options) -> Case {
@@ -33,6 +57,7 @@ fn case(name: &str, size: Vec2, options: Options) -> Case {
         size,
         options,
         setup: |_| {},
+        click: None,
     }
 }
 
@@ -66,25 +91,47 @@ fn review_session(app: &mut App) {
     app.dialog = Some(app.review_dialog(Target::file(path), None));
 }
 
+fn selecting(key: &str) -> Options {
+    Options {
+        select: LevelId::from_key(key),
+        ..opening("tests/saves/game/0019.sav")
+    }
+}
+
 fn cases() -> Vec<Case> {
     let mut cases = Vec::new();
-    for (size_name, size) in [("1280", WIDE), ("1024", MEDIUM)] {
-        cases.push(case(
-            &format!("main-{size_name}"),
-            size,
-            opening("tests/saves/game/0019.sav"),
-        ));
+    for size in SIZES {
+        cases.push(case("main", size, opening("tests/saves/game/0019.sav")));
     }
-    let toad = LevelId::from_key("toadvillage").unwrap();
+    for size in [SIZES[1], SIZES[2], SIZES[3], WIDE, SIZES[6]] {
+        cases.push(case("level-toadvillage", size, selecting("toadvillage")));
+    }
+    cases.push(case("level-ngin", PHONE, selecting("ngin")));
+    let mut overview = case("overview", PHONE, opening("tests/saves/game/0019.sav"));
+    overview.setup = |app| app.page = Page::Overview;
+    cases.push(overview);
+    let mut menu = case("menu", PHONE, opening("tests/saves/game/0019.sav"));
+    menu.click = Some("Menu");
+    cases.push(menu);
     cases.push(case(
-        "level-toadvillage",
-        WIDE,
+        "preset-108",
+        PHONE,
         Options {
-            select: Some(toad),
+            view: Some(View::PresetAll),
             ..opening("tests/saves/game/0019.sav")
         },
     ));
+    cases.push(case(
+        "diagnostics",
+        PHONE,
+        Options {
+            view: Some(View::Diagnostics),
+            ..opening("tests/saves/edited/t4_crystals.sav")
+        },
+    ));
+    cases.push(case("empty", SIZES[0], Options::default()));
     cases.push(case("empty", WIDE, Options::default()));
+    let toad = LevelId::from_key("toadvillage").unwrap();
     for view in View::ALL {
         let rel = match view {
             View::Diagnostics => "tests/saves/edited/t4_crystals.sav",
@@ -121,13 +168,19 @@ fn render(dir: &Path, case: &Case, dark: bool) {
         ..Options::default()
     };
     let mut app = App::with_context(&Context::default(), options);
+    app.touch_screen = case.touch_screen();
     (case.setup)(&mut app);
     let mut harness = themed(Harness::builder().with_size(case.size).wgpu(), app);
+    if let Some(label) = case.click {
+        harness.run_steps(2);
+        harness.get_by_label(label).click();
+    }
     // Modals and windows take a few frames to reach their size and place.
     harness.run_steps(8);
     let image = harness.render().expect("a render");
     let theme = if dark { "dark" } else { "light" };
-    let path = dir.join(format!("{}-{theme}.png", case.name));
+    let (w, h) = (case.size.x, case.size.y);
+    let path = dir.join(format!("{}-{w}x{h}-{theme}.png", case.name));
     let file = BufWriter::new(File::create(&path).unwrap());
     let mut encoder = png::Encoder::new(file, image.width(), image.height());
     encoder.set_color(png::ColorType::Rgba);
