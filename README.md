@@ -57,7 +57,7 @@ cargo run -p gui -- --open MACK_8.sav
 powershell -ExecutionPolicy Bypass -File scripts\build-windows.ps1
 ```
 
-The script pulls the latest commits (`-NoPull` skips that), builds the release and prints the path of the `.exe`, which embeds the app icon.
+The script pulls the latest commits (`-NoPull` skips that), builds the release and prints the path of the `.exe`, which embeds the app icon and the C runtime (`.cargo/config.toml`).
 
 **Web.** Install [Trunk](https://trunkrs.dev) and the WebAssembly target:
 

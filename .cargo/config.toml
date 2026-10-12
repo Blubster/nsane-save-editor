@@ -1,0 +1,4 @@
+# The Windows executable carries its C runtime, so it runs on a Windows
+# without the Visual C++ Redistributable.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
