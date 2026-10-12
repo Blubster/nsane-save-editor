@@ -115,7 +115,7 @@ nsane-save-editor --open tests/saves/game/0019.sav \
 
 The capture is the window's own rendering, at the display's scale, without the window frame.
 
-Without a window, an ignored test renders the layouts to PNG files, in both themes: the main view at 360×740, 390×844, 844×390 (a phone held sideways), 768×1024, 1024×720, 1280×800 and 1920×1080; a level's page from 390×844 to 1920×1080; and on a phone, a boss's page, the overview page, the ☰ menu, a preset and the diagnostics; the empty window at 360×740 and 1280×800; and every `--view` at 1280×800. The files are named `<case>-<w>x<h>-<theme>.png`, for example `main-390x844-dark.png`. It draws with wgpu and needs no display:
+Without a window, an ignored test renders the layouts to PNG files, in both themes: the main view at 360×740, 390×844, 844×390 (a phone held sideways), 768×1024, 1024×720, 1280×800 and 1920×1080; a level's page from 390×844 to 1920×1080; and on a phone, a boss's page, the overview page, the ☰ menu, a preset, the diagnostics and the save review; the empty window at 360×740 and 1280×800; and every `--view` at 1280×800. The files are named `<case>-<w>x<h>-<theme>.png`, for example `main-390x844-dark.png`. It draws with wgpu and needs no display:
 
 ```sh
 NSANE_RENDER_DIR=/tmp/renders cargo test -p gui renders -- --ignored

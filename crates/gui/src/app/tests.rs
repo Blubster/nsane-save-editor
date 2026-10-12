@@ -2336,6 +2336,25 @@ fn dialogs_are_sheets_on_a_phone() {
     assert!(rect.top() <= 16.0, "{rect:?}");
 }
 
+/// On a narrow phone, the review's checkbox wraps beside the buttons
+/// instead of running under them. The web's "Download" is wider than
+/// "Save file": 320 points here leave less room than 360 do there.
+#[test]
+fn the_review_sheet_footer_fits_a_narrow_phone() {
+    let mut harness = sized(
+        Vec2::new(320.0, 640.0),
+        opening(repo_file("tests/saves/game/0018.sav")),
+    );
+    type_lives_on_the_overview(&mut harness, "42");
+    click(&mut harness, "Menu");
+    click(&mut harness, "Save");
+    harness.run_steps(2);
+    let check = harness.get_by_label("Don't show this again").rect();
+    let cancel = harness.get_by_label("Cancel").rect();
+    assert!(check.right() <= cancel.left(), "{check:?} {cancel:?}");
+    assert!(check.left() >= 0.0, "{check:?}");
+}
+
 #[test]
 fn the_phone_diagnostics_sheet_shows_a_level() {
     let mut harness = sized(

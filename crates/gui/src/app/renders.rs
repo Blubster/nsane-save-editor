@@ -129,6 +129,13 @@ fn cases() -> Vec<Case> {
             ..opening("tests/saves/edited/t4_crystals.sav")
         },
     ));
+    let mut review = case(
+        "save-review",
+        SIZES[0],
+        opening("tests/saves/game/0019.sav"),
+    );
+    review.setup = review_session;
+    cases.push(review);
     cases.push(case("empty", SIZES[0], Options::default()));
     cases.push(case("empty", WIDE, Options::default()));
     let toad = LevelId::from_key("toadvillage").unwrap();

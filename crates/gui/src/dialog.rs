@@ -283,9 +283,13 @@ fn header(ui: &mut Ui, dialog: &Dialog) {
 }
 
 /// Lays out the actions of a footer from the left, after the primary
-/// action and Cancel.
+/// action and Cancel. Their text wraps in the space those leave, on a
+/// narrow sheet, instead of running under them.
 pub fn left(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
-    ui.with_layout(Layout::left_to_right(Align::Center), add);
+    ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+        add(ui);
+    });
 }
 
 /// The primary action of a footer. `why_not` explains why it is disabled.
