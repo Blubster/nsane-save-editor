@@ -231,6 +231,14 @@ impl Palette {
         }
     }
 
+    /// The outline of a colored gem not collected: its own colour, so that
+    /// the five can be told apart before they are owned. Dark on white,
+    /// light on a dark card; owned gems are filled.
+    pub fn missing_gem(&self, color: GemColor) -> Color32 {
+        let s = self.gem(color);
+        if self.dark { s.light } else { s.dark }
+    }
+
     pub fn relic(&self, relic: Relic) -> Swatch {
         match relic {
             Relic::Sapphire => self.relic_sapphire,
@@ -637,6 +645,14 @@ mod tests {
             }
             for (bg_name, bg) in [("chrome", p.chrome), ("surface", p.surface)] {
                 check(format!("{theme} muted on {bg_name}"), p.muted, bg, 3.0);
+                for color in GemColor::ALL {
+                    check(
+                        format!("{theme} missing {} gem on {bg_name}", color.key()),
+                        p.missing_gem(color),
+                        bg,
+                        3.0,
+                    );
+                }
             }
             // Focus rings and selected text fields.
             check(

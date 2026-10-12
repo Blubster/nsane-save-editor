@@ -122,7 +122,8 @@ impl Boss {
 pub enum Presence {
     /// Full colour.
     Owned,
-    /// Outline only, in the theme's muted colour.
+    /// Outline only, in the theme's muted colour; a colored gem keeps its
+    /// own colour, so that the five differ.
     Missing,
     /// A very faint outline: the item doesn't exist here (no crystal in a
     /// secret level, for example). Not clickable.
@@ -167,6 +168,7 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, state: IconState, dark: 
         pal: theme::palette(dark),
         presence: state.presence,
         hovered: state.hovered && state.presence != Presence::NotApplicable,
+        missing_ink: None,
         pixel: 1.0 / painter.pixels_per_point(),
         side,
     };
@@ -174,7 +176,13 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, state: IconState, dark: 
         Icon::Crystal => crystal(&pen),
         Icon::ClearGem => gem(&pen, pen.pal.gem_clear),
         Icon::BonusGem => bonus_gem(&pen),
-        Icon::ColoredGem(color) => gem(&pen, pen.pal.gem(color)),
+        Icon::ColoredGem(color) => {
+            let pen = Pen {
+                missing_ink: Some(pen.pal.missing_gem(color)),
+                ..pen
+            };
+            gem(&pen, pen.pal.gem(color))
+        }
         Icon::Relic(relic) => relic_icon(&pen, relic),
         Icon::Boss(b) => boss(&pen, b),
         Icon::Ability(Ability::BodySlam) => body_slam(&pen),
@@ -353,6 +361,8 @@ struct Pen<'a> {
     pal: &'static Palette,
     presence: Presence,
     hovered: bool,
+    /// The lines of a missing icon, when not the muted colour.
+    missing_ink: Option<Color32>,
     /// One physical pixel, in points: the thinnest line drawn.
     pixel: f32,
     /// The size the icon is drawn at, even inside a `sub` pen, so that line
@@ -408,7 +418,7 @@ impl Pen<'_> {
         match self.presence {
             Presence::Owned => c,
             Presence::Missing if self.hovered => self.pal.text,
-            Presence::Missing => self.pal.muted,
+            Presence::Missing => self.missing_ink.unwrap_or(self.pal.muted),
             Presence::NotApplicable => self.pal.faint,
         }
     }
