@@ -45,8 +45,8 @@ pub const APP_ID: &str = "nsane-save-editor";
 
 /// The ☰ menu, at most.
 const MENU_WIDTH: f32 = 280.0;
-/// The overview's column of cards, at first: in a 1024-point window the
-/// warp room grid beside it keeps two columns.
+/// The overview's column, at first: in a 1024-point window the warp room
+/// grid beside it keeps two columns.
 const OVERVIEW_WIDTH: f32 = 272.0;
 /// The bar at the bottom of a phone, and its page buttons.
 const BOTTOM_BAR_HEIGHT: f32 = 44.0;

@@ -1,8 +1,8 @@
-//! The overview: a column of cards like the warp rooms' (progress and
-//! lives, the totals with the gems that belong to no single row of the grid
-//! (the five colored gems as a set, the bonus gem), bosses, super powers,
-//! the story and the diagnostics). Totals are counted from the save as it
-//! is now; the stored summary is only rewritten when saving.
+//! The overview: one card like the warp rooms', its parts apart by lines
+//! (progress and lives, the totals with the gems that belong to no single
+//! row of the grid (the five colored gems as a set, the bonus gem), bosses,
+//! super powers, the story and the diagnostics). Totals are counted from
+//! the save as it is now; the stored summary is only rewritten when saving.
 
 use egui::{Align, DragValue, Layout, RichText, Stroke, Ui, Vec2, WidgetInfo, WidgetType};
 use nsane::Document;
@@ -174,7 +174,15 @@ fn colored_gems(ui: &mut Ui, doc: &Document, actions: &mut Vec<Action>) {
     });
 }
 
-/// A card's title, as the warp rooms' are, maybe with a count on the right:
+/// Between two parts of the overview, as between the parts of a level's
+/// page.
+pub fn divider(ui: &mut Ui) {
+    ui.add_space(theme::SPACING / 2.0);
+    ui.separator();
+    ui.add_space(theme::SPACING / 2.0);
+}
+
+/// A part's title, as the warp rooms' are, maybe with a count on the right:
 /// "Bosses 2 / 5". The count is named "Bosses: 2 / 5" for screen readers
 /// and tests.
 fn title(ui: &mut Ui, title: &str, count: Option<String>, tip: Option<&str>) {
