@@ -510,8 +510,11 @@ fn the_theme_survives_a_restart() {
         opening_options("tests/saves/game/0019.sav"),
     ));
     let dark = first.state().dark;
-    first.get_by_label(if dark { "☀" } else { "🌙" }).click();
+    // A phone: the theme is in the ☰ menu.
+    first.set_size(Vec2::new(600.0, 800.0));
     first.run_steps(2);
+    click(&mut first, "Menu");
+    click(&mut first, if dark { "Light theme" } else { "Dark theme" });
     assert_eq!(first.state().dark, !dark);
     eframe::App::save(first.state_mut(), &mut storage);
     drop(first);
@@ -2147,4 +2150,205 @@ fn leftover_bytes_as_the_last_level_show_as_unknown() {
     leftover.get_by_label("Last level played: unknown");
     let playthrough = harness(opening(repo_file("tests/saves/game/0019.sav")));
     playthrough.get_by_label("Last level played: Toad Village");
+}
+
+// ------------------------------------------------------------ layouts
+
+/// The toolbar at its widest: a Switch save with unsaved changes, an error
+/// (the save outgrew its file), a warning (the portal glitch) and notes
+/// (more than 99 lives), and the debug menu of test builds.
+fn widest_toolbar(width: f32) -> Harness<'static, App> {
+    let mut harness = themed(
+        Harness::builder().with_size(Vec2::new(width, 800.0)),
+        opening(repo_file("tests/saves/edited/t4_crystals.sav")),
+    );
+    let edits: Vec<_> = (0..40)
+        .map(|i| Edit::RawFlagSet {
+            key: format!("{i}_{}", "x".repeat(4000)),
+        })
+        .collect();
+    harness.state_mut().apply("big".into(), edits);
+    harness
+        .state_mut()
+        .apply("lives".into(), vec![Edit::SetLives { count: 150 }]);
+    harness.run_steps(3);
+    harness
+}
+
+/// The toolbar's items: Open, the last of its left part (the notes'
+/// badge), and the right part (Debug, then the theme toggle).
+fn toolbar_rects(harness: &Harness<'_, App>) -> [egui::Rect; 4] {
+    let theme = if harness.state().dark { "☀" } else { "🌙" };
+    let badge = harness
+        .query_all_by_label_contains(" notes")
+        .find(|n| n.accesskit_node().role() == Role::Button)
+        .expect("the notes' badge")
+        .rect();
+    [
+        harness.get_by_label("Open").rect(),
+        badge,
+        harness.get_by_label("Debug").rect(),
+        harness.get_by_label(theme).rect(),
+    ]
+}
+
+#[test]
+fn the_full_toolbar_fits_on_one_line_at_its_widest() {
+    for dark in [false, true] {
+        let mut harness = widest_toolbar(layout::WIDE_MIN);
+        harness.state_mut().dark = dark;
+        harness.run_steps(3);
+        assert_eq!(layout::current(&harness.ctx), Class::Wide);
+        for name in ["1 error", "1 warning", "2 notes"] {
+            assert_eq!(harness.query_all_by_label(name).count(), 2, "{name}");
+        }
+        let [open, badge, debug, theme] = toolbar_rects(&harness);
+        // Nothing wrapped, and the right part doesn't cover the left one.
+        assert_eq!(open.top(), theme.top(), "dark: {dark}");
+        assert!(badge.top() < open.bottom(), "dark: {dark}: {badge:?}");
+        assert!(
+            debug.left() >= badge.right(),
+            "dark: {dark}: {badge:?} {debug:?}"
+        );
+    }
+}
+
+fn sized(size: Vec2, app: App) -> Harness<'static, App> {
+    let mut harness = themed(Harness::builder().with_size(size), app);
+    harness.run_steps(2);
+    harness
+}
+
+const MEDIUM: Vec2 = Vec2::new(800.0, 1000.0);
+const PHONE: Vec2 = Vec2::new(390.0, 844.0);
+
+#[test]
+fn a_medium_window_has_the_compact_bar_beside_the_overview() {
+    let mut harness = sized(MEDIUM, opening(repo_file("tests/saves/game/0019.sav")));
+    assert_eq!(layout::current(&harness.ctx), Class::Medium);
+    harness.get_by_label("Menu");
+    assert!(harness.query_by_label("Save as").is_none(), "in the menu");
+    harness.get_by_label("64 / 150 KB");
+    // The overview and the grid, side by side.
+    let lives = harness.get_by_role(Role::SpinButton).rect();
+    let grid = harness.get_by_label("Toad Village").rect();
+    assert!(lives.right() < grid.left(), "{lives:?} {grid:?}");
+    click(&mut harness, "Menu");
+    harness.get_by_label("Save as");
+    harness.get_by_label("Complete everything (108%)…");
+}
+
+#[test]
+fn a_phone_shows_one_page_at_a_time() {
+    let mut harness = sized(PHONE, opening(repo_file("tests/saves/game/0019.sav")));
+    assert_eq!(layout::current(&harness.ctx), Class::Phone);
+    // The rooms first: no overview, no game tabs.
+    harness.get_by_label("Toad Village");
+    assert!(harness.query_by_role(Role::SpinButton).is_none());
+    assert!(harness.query_by_label("Crash 3: Warped").is_none());
+    click(&mut harness, "Show the overview");
+    harness.get_by_role(Role::SpinButton);
+    harness.get_by_label("Game");
+    assert!(harness.query_by_label("Toad Village").is_none());
+    click(&mut harness, "Show the rooms");
+    harness.get_by_label("Toad Village");
+
+    click(&mut harness, "Toad Village");
+    assert_eq!(selected(&harness), Some(level("toadvillage")));
+    harness.get_by_label("Time trial");
+    click(&mut harness, "All rooms");
+    assert_eq!(selected(&harness), None);
+}
+
+#[test]
+fn a_boss_on_the_phone_overview_shows_its_page() {
+    let mut harness = sized(PHONE, opening(repo_file("tests/saves/game/0019.sav")));
+    for _ in 0..2 {
+        click(&mut harness, "Show the overview");
+        click(&mut harness, "Overview: N. Gin");
+        assert_eq!(harness.state().page, Page::Rooms);
+        assert_eq!(selected(&harness), Some(level("ngin")));
+        harness.get_by_label("Ability: Fruit Bazooka");
+    }
+}
+
+#[test]
+fn the_phone_menu_holds_the_toolbar() {
+    let mut harness = sized(PHONE, opening(repo_file("tests/saves/game/0018.sav")));
+    type_lives_on_the_overview(&mut harness, "42");
+    // The change count is a dot, named for screen readers.
+    harness.get_by_label("1 change");
+    click(&mut harness, "Menu");
+    for entry in ["Open", "Save", "Save as", "Convert to PC…", "About…"] {
+        harness.get_by_label(entry);
+    }
+    open_dialog(&mut harness, "History…");
+    assert_eq!(harness.state().dialog, Some(Dialog::History));
+    // Shortcuts wait for it, like for any dialog.
+    press(&mut harness, Modifiers::COMMAND, Key::Z);
+    assert_eq!(lives(&harness), 42);
+    click(&mut harness, "Opened 0018.sav");
+    assert_eq!(lives(&harness), 5);
+    assert_eq!(harness.state().dialog, None);
+}
+
+/// Types into the lives field of a phone's overview page, then goes back to
+/// the rooms.
+fn type_lives_on_the_overview(harness: &mut Harness<'_, App>, text: &str) {
+    click(harness, "Show the overview");
+    type_lives(harness, text);
+    click(harness, "Show the rooms");
+}
+
+/// An on-screen keyboard can shorten the page while a field is typed in:
+/// the layout waits until the field is left.
+#[test]
+fn the_class_is_kept_while_a_field_has_focus() {
+    let mut harness = sized(PHONE, opening(repo_file("tests/saves/game/0018.sav")));
+    click(&mut harness, "Show the overview");
+    start_typing_lives(&mut harness, "42");
+    harness.set_size(Vec2::new(1280.0, 800.0));
+    harness.run_steps(2);
+    assert_eq!(layout::current(&harness.ctx), Class::Phone);
+    harness.key_press(Key::Enter);
+    harness.run_steps(3);
+    assert_eq!(layout::current(&harness.ctx), Class::Wide);
+    assert_eq!(lives(&harness), 42);
+}
+
+#[test]
+fn dialogs_are_sheets_on_a_phone() {
+    let harness = sized(
+        PHONE,
+        app(Options {
+            view: Some(View::About),
+            ..Options::default()
+        }),
+    );
+    let rect = harness
+        .ctx
+        .memory(|m| m.area_rect(dialog::area_id("about")))
+        .expect("the dialog was shown");
+    assert!(rect.width() >= PHONE.x - 24.0, "{rect:?}");
+    assert!(rect.top() <= 16.0, "{rect:?}");
+}
+
+#[test]
+fn the_phone_diagnostics_sheet_shows_a_level() {
+    let mut harness = sized(
+        PHONE,
+        opening(repo_file("tests/saves/edited/t4_crystals.sav")),
+    );
+    let badge = harness
+        .query_all_by_label("1 warning")
+        .next()
+        .expect("the bottom bar's badge");
+    assert!(badge.rect().top() > PHONE.y - 60.0, "{:?}", badge.rect());
+    badge.click();
+    harness.run_steps(2);
+    assert!(harness.state().crash3.diagnostics_open());
+    click(&mut harness, "Show N. Gin");
+    assert!(!harness.state().crash3.diagnostics_open());
+    assert_eq!(selected(&harness), Some(level("ngin")));
+    harness.get_by_label("Ability: Fruit Bazooka");
 }

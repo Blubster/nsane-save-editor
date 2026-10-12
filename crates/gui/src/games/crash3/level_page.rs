@@ -93,7 +93,8 @@ fn named(response: &Response, name: &str, selected: Option<bool>) {
 }
 
 /// ‹ All rooms, the room tabs, and ‹ › to step through the room's rows
-/// when its card isn't shown.
+/// when its card isn't shown. On one row when they fit; else the tabs go
+/// under the others.
 fn header(
     ui: &mut Ui,
     level: LevelId,
@@ -102,64 +103,118 @@ fn header(
     nav: &mut Vec<Nav>,
 ) {
     let room = level.level().warp_room;
-    ui.horizontal_wrapped(|ui| {
-        let back = ui
-            .button("‹ All rooms")
-            .on_hover_text("Back to the warp rooms (Escape)");
-        named(&back, "All rooms", None);
-        if back.clicked() {
-            nav.push(Nav::Back);
-        }
-        ui.add_space(SPACING);
-        for r in 1..=6 {
-            let (text, name, tip) = if r == 6 {
-                (
-                    "Secret".to_owned(),
-                    "Show the secret warp room".to_owned(),
-                    "The secret warp room".to_owned(),
-                )
-            } else {
-                (
-                    r.to_string(),
-                    format!("Show warp room {r}"),
-                    format!("Warp room {r}"),
-                )
-            };
-            let response = ui
-                .add(Button::selectable(r == room, text))
-                .on_hover_text(tip);
-            named(&response, &name, Some(r == room));
-            if response.clicked() {
-                *next = stops(r).first().copied();
-            }
-        }
-        if room_column {
-            return;
-        }
-        let stops = stops(room);
-        let at = stops.iter().position(|&l| l == level);
-        let previous = at
-            .and_then(|i| i.checked_sub(1))
-            .and_then(|i| stops.get(i))
-            .copied();
-        let following = at.and_then(|i| stops.get(i + 1)).copied();
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            for (target, text, name) in [
-                (following, "›", "Next level"),
-                (previous, "‹", "Previous level"),
-            ] {
-                let response = ui.add_enabled(target.is_some(), Button::new(text));
-                let response = match target {
-                    Some(l) => response.on_hover_text(format!("{name}: {}", l.name())),
-                    None => response,
-                };
-                named(&response, name, None);
-                if response.clicked() {
-                    *next = target;
-                }
+    let steps = !room_column;
+    let tabs: Vec<String> = (1..=6).map(tab_text).collect();
+    let spacing = ui.spacing().item_spacing.x;
+    let mut texts: Vec<&str> = vec![BACK];
+    texts.extend(tabs.iter().map(String::as_str));
+    if steps {
+        texts.extend(["‹", "›"]);
+    }
+    let one_row: f32 = texts
+        .iter()
+        .map(|t| button_width(ui, t) + spacing)
+        .sum::<f32>()
+        + 2.0 * SPACING;
+    if one_row <= ui.available_width() {
+        ui.horizontal(|ui| {
+            back_button(ui, nav);
+            ui.add_space(SPACING);
+            room_tabs(ui, room, next);
+            if steps {
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    step_buttons(ui, level, next);
+                });
             }
         });
-    });
+    } else {
+        ui.horizontal(|ui| {
+            back_button(ui, nav);
+            if steps {
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    step_buttons(ui, level, next);
+                });
+            }
+        });
+        ui.horizontal_wrapped(|ui| room_tabs(ui, room, next));
+    }
+}
+
+const BACK: &str = "‹ All rooms";
+
+fn tab_text(room: u8) -> String {
+    if room == 6 {
+        "Secret".to_owned()
+    } else {
+        room.to_string()
+    }
+}
+
+/// The width of a button showing `text`.
+fn button_width(ui: &Ui, text: &str) -> f32 {
+    let galley = egui::WidgetText::from(text).into_galley(
+        ui,
+        Some(egui::TextWrapMode::Extend),
+        f32::INFINITY,
+        egui::TextStyle::Button,
+    );
+    galley.size().x + 2.0 * ui.spacing().button_padding.x
+}
+
+fn back_button(ui: &mut Ui, nav: &mut Vec<Nav>) {
+    let back = ui
+        .button(BACK)
+        .on_hover_text("Back to the warp rooms (Escape)");
+    named(&back, "All rooms", None);
+    if back.clicked() {
+        nav.push(Nav::Back);
+    }
+}
+
+/// A tab per room: a click shows the room's first row.
+fn room_tabs(ui: &mut Ui, room: u8, next: &mut Option<LevelId>) {
+    for r in 1..=6 {
+        let (name, tip) = if r == 6 {
+            (
+                "Show the secret warp room".to_owned(),
+                "The secret warp room".to_owned(),
+            )
+        } else {
+            (format!("Show warp room {r}"), format!("Warp room {r}"))
+        };
+        let response = ui
+            .add(Button::selectable(r == room, tab_text(r)))
+            .on_hover_text(tip);
+        named(&response, &name, Some(r == room));
+        if response.clicked() {
+            *next = stops(r).first().copied();
+        }
+    }
+}
+
+/// ‹ and ›, in a right-to-left layout: the room's previous and next rows.
+fn step_buttons(ui: &mut Ui, level: LevelId, next: &mut Option<LevelId>) {
+    let stops = stops(level.level().warp_room);
+    let at = stops.iter().position(|&l| l == level);
+    let previous = at
+        .and_then(|i| i.checked_sub(1))
+        .and_then(|i| stops.get(i))
+        .copied();
+    let following = at.and_then(|i| stops.get(i + 1)).copied();
+    for (target, text, name) in [
+        (following, "›", "Next level"),
+        (previous, "‹", "Previous level"),
+    ] {
+        let response = ui.add_enabled(target.is_some(), Button::new(text));
+        let response = match target {
+            Some(l) => response.on_hover_text(format!("{name}: {}", l.name())),
+            None => response,
+        };
+        named(&response, name, None);
+        if response.clicked() {
+            *next = target;
+        }
+    }
 }
 
 /// The details, at most `DETAILS_WIDTH` wide, or in two columns when the

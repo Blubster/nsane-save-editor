@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use egui::{
     Align, Align2, Button, Color32, Context, Frame, Id, Key, KeyboardShortcut, Layout, Margin,
-    Modifiers, RichText, Sense, Ui, Vec2, ViewportCommand,
+    Modifiers, RichText, Sense, Ui, Vec2, ViewportCommand, WidgetInfo, WidgetType,
 };
 use nsane::SaveError;
 use nsane::crash3::{Edit, LevelId};
@@ -21,6 +21,7 @@ use crate::games::crash3::{
     Convert, ConvertRequest, Crash3Ui, Preset, SaveReview, Written, save_blocker,
 };
 use crate::icons::{self, Icon, IconState};
+use crate::layout::{self, Class};
 use crate::options::{Options, View};
 use crate::prefs::Prefs;
 use crate::theme;
@@ -42,8 +43,17 @@ pub const PRIVACY: &str = "No data leaves your computer: the save is read and ed
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))] // the web keeps settings per site
 pub const APP_ID: &str = "nsane-save-editor";
 
+/// The ☰ menu, at most.
+const MENU_WIDTH: f32 = 280.0;
+/// The bar at the bottom of a phone, and its page buttons.
+const BOTTOM_BAR_HEIGHT: f32 = 44.0;
+const PAGE_BUTTON_HEIGHT: f32 = 36.0;
 /// The size budget turns amber above this share of a Switch file.
 const BUDGET_WARNING_PERCENT: usize = 80;
+/// A toast is at most this wide, but on a phone.
+const TOAST_WIDTH: f32 = 420.0;
+/// Around a toast on a phone.
+const PHONE_TOAST_MARGIN: f32 = 12.0;
 /// How long a toast stays, in seconds.
 const TOAST_SECONDS: f64 = 6.0;
 const ERROR_TOAST_SECONDS: f64 = 12.0;
@@ -101,6 +111,17 @@ pub enum Nav {
     Select(LevelId),
     /// Back from a level's page to the warp room grid.
     Back,
+    /// The overview or the rooms, on a phone.
+    Page(Page),
+}
+
+/// What a phone shows, one at a time: the overview, or the rooms (the warp
+/// room grid or a level's page).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Page {
+    Overview,
+    #[default]
+    Rooms,
 }
 
 /// What to do once unsaved changes are saved or discarded.
@@ -160,6 +181,8 @@ enum Dialog {
     #[cfg(target_arch = "wasm32")]
     DownloadAs(String),
     About,
+    /// Every step undo and redo can reach, from the ☰ menu.
+    History,
 }
 
 /// The game tabs. A save holds all three games.
@@ -235,6 +258,15 @@ pub struct App {
     game: Game,
     /// The level whose page is shown in place of the warp room grid.
     selected: Option<LevelId>,
+    /// What a phone shows. A reload starts on the rooms.
+    page: Page,
+    /// The layout class of the last frame.
+    class: Class,
+    /// The screen can be touched: a short one is then a phone held sideways.
+    touch_screen: bool,
+    /// The height of a phone's bottom bar, which the toasts stay above; 0
+    /// without it.
+    bottom_bar_height: f32,
     /// Moves between the views asked for during the frame.
     nav: Vec<Nav>,
     /// A widget had keyboard focus at the end of the last frame. egui drops
@@ -313,6 +345,13 @@ impl App {
             file: None,
             game: Game::Crash3,
             selected: None,
+            page: Page::Rooms,
+            class: Class::Wide,
+            #[cfg(not(target_arch = "wasm32"))]
+            touch_screen: false,
+            #[cfg(target_arch = "wasm32")]
+            touch_screen: crate::io::web::touch_screen(),
+            bottom_bar_height: 0.0,
             nav: Vec::new(),
             had_focus: false,
             crash3: Crash3Ui::default(),
@@ -466,6 +505,7 @@ impl App {
                 });
                 self.crash3.reset();
                 self.selected = None;
+                self.page = Page::Rooms;
                 self.convert = None;
                 true
             }
@@ -1025,7 +1065,14 @@ impl App {
     fn navigate(&mut self) {
         for nav in std::mem::take(&mut self.nav) {
             match nav {
-                Nav::Select(level) => self.selected = Some(level),
+                Nav::Select(level) => {
+                    self.selected = Some(level);
+                    self.page = Page::Rooms;
+                    if self.class == Class::Phone {
+                        self.crash3.close_diagnostics();
+                    }
+                }
+                Nav::Page(page) => self.page = page,
                 Nav::Back => {
                     self.selected = None;
                     self.crash3.close_level();
@@ -1106,7 +1153,8 @@ impl App {
         }
     }
 
-    fn toolbar(&mut self, ui: &mut Ui, actions: &mut Vec<Action>) {
+    /// The toolbar of a wide window, on one line.
+    fn full_toolbar(&mut self, ui: &mut Ui, actions: &mut Vec<Action>) {
         let ctx = ui.ctx().clone();
         let tip = |text: &str, shortcut: &KeyboardShortcut| {
             format!("{text} ({})", ctx.format_shortcut(shortcut))
@@ -1115,54 +1163,7 @@ impl App {
             .frame(bar_frame(ui))
             .show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
-                    let has_file = self.file.is_some();
-                    if ui
-                        .button("Open")
-                        .on_hover_text(tip("Open a save file", &OPEN))
-                        .clicked()
-                    {
-                        actions.push(Action::Open);
-                    }
-                    // An error diagnostic (a Switch save that outgrew its
-                    // file) keeps the file from being written.
-                    let blocked = self.save_blocked();
-                    let why_not = |response: egui::Response| match &blocked {
-                        Some(reason) => {
-                            response.on_disabled_hover_text(format!("Can't save: {reason}"))
-                        }
-                        None => response,
-                    };
-                    let can_save = has_file && blocked.is_none();
-                    if why_not(ui.add_enabled(can_save, Button::new("Save")))
-                        .on_hover_text(tip(SAVE_TIP, &SAVE))
-                        .clicked()
-                    {
-                        actions.push(Action::Save);
-                    }
-                    if why_not(ui.add_enabled(can_save, Button::new("Save as")))
-                        .on_hover_text(tip(SAVE_AS_TIP, &SAVE_AS))
-                        .clicked()
-                    {
-                        actions.push(Action::SaveAs);
-                    }
-                    if let Some(file) = &self.file {
-                        let target = file.doc.platform().other();
-                        if ui
-                            .button(format!("Convert to {target}…"))
-                            .on_hover_text(format!(
-                                "Make a copy of this save for the {target} version of the \
-                                 game{}",
-                                if nsane::transfer::VERIFIED_IN_GAME {
-                                    ""
-                                } else {
-                                    " (experimental)"
-                                }
-                            ))
-                            .clicked()
-                        {
-                            actions.push(Action::Convert);
-                        }
-                    }
+                    self.file_buttons(ui, actions, &tip);
                     ui.separator();
                     self.undo_redo(ui, actions, &tip);
                     self.history_menu(ui, actions);
@@ -1185,11 +1186,7 @@ impl App {
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         self.theme_toggle(ui);
                         self.settings_menu(ui);
-                        #[cfg(not(target_arch = "wasm32"))]
-                        let debug_menu = cfg!(debug_assertions) && self.screenshot.is_none();
-                        #[cfg(target_arch = "wasm32")]
-                        let debug_menu = cfg!(debug_assertions);
-                        if debug_menu {
+                        if self.debug_menu() {
                             ui.menu_button("Debug", |ui| {
                                 ui.checkbox(&mut self.gallery_open, "Icon gallery");
                             });
@@ -1199,15 +1196,180 @@ impl App {
             });
     }
 
+    /// The bar of a medium window or a phone, on one line: the ☰ menu, the
+    /// file name (shortened to fit) and its platform, and undo and redo. A
+    /// medium window also shows the size budget, the change count and the
+    /// diagnostics; a phone, a dot while there are unsaved changes.
+    fn compact_bar(&mut self, ui: &mut Ui, actions: &mut Vec<Action>, class: Class) {
+        let ctx = ui.ctx().clone();
+        let tip = |text: &str, shortcut: &KeyboardShortcut| {
+            format!("{text} ({})", ctx.format_shortcut(shortcut))
+        };
+        egui::Panel::top("toolbar")
+            .frame(bar_frame(ui))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    self.main_menu(ui, actions, &tip);
+                    if self.file.is_none() {
+                        return;
+                    }
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        // Right to left: redo is the rightmost.
+                        self.redo_button(ui, actions, &tip);
+                        self.undo_button(ui, actions, &tip);
+                        if class == Class::Medium
+                            && self.game == Game::Crash3
+                            && let Some(file) = &self.file
+                        {
+                            let width = self.crash3.diagnostics_badges_width(ui, &file.doc);
+                            let size = Vec2::new(width, ui.spacing().interact_size.y);
+                            ui.allocate_ui_with_layout(
+                                size,
+                                Layout::left_to_right(Align::Center),
+                                |ui| self.crash3.diagnostics_badges(ui, &file.doc),
+                            );
+                        }
+                        ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                            if let Some(file) = &mut self.file {
+                                compact_status(ui, file, class);
+                            }
+                        });
+                    });
+                });
+            });
+    }
+
+    /// Debug builds have a debug menu, except in screenshots.
+    fn debug_menu(&self) -> bool {
+        #[cfg(not(target_arch = "wasm32"))]
+        return cfg!(debug_assertions) && self.screenshot.is_none();
+        #[cfg(target_arch = "wasm32")]
+        return cfg!(debug_assertions);
+    }
+
+    /// Open, Save, Save as and Convert to…, in the toolbar or the ☰ menu.
+    fn file_buttons(
+        &self,
+        ui: &mut Ui,
+        actions: &mut Vec<Action>,
+        tip: &dyn Fn(&str, &KeyboardShortcut) -> String,
+    ) {
+        if ui
+            .button("Open")
+            .on_hover_text(tip("Open a save file", &OPEN))
+            .clicked()
+        {
+            actions.push(Action::Open);
+        }
+        // An error diagnostic (a Switch save that outgrew its file) keeps
+        // the file from being written.
+        let blocked = self.save_blocked();
+        let why_not = |response: egui::Response| match &blocked {
+            Some(reason) => response.on_disabled_hover_text(format!("Can't save: {reason}")),
+            None => response,
+        };
+        let can_save = self.file.is_some() && blocked.is_none();
+        if why_not(ui.add_enabled(can_save, Button::new("Save")))
+            .on_hover_text(tip(SAVE_TIP, &SAVE))
+            .clicked()
+        {
+            actions.push(Action::Save);
+        }
+        if why_not(ui.add_enabled(can_save, Button::new("Save as")))
+            .on_hover_text(tip(SAVE_AS_TIP, &SAVE_AS))
+            .clicked()
+        {
+            actions.push(Action::SaveAs);
+        }
+        if let Some(file) = &self.file {
+            let target = file.doc.platform().other();
+            if ui
+                .button(format!("Convert to {target}…"))
+                .on_hover_text(format!(
+                    "Make a copy of this save for the {target} version of the game{}",
+                    if nsane::transfer::VERIFIED_IN_GAME {
+                        ""
+                    } else {
+                        " (experimental)"
+                    }
+                ))
+                .clicked()
+            {
+                actions.push(Action::Convert);
+            }
+        }
+    }
+
+    /// The ☰ menu of the compact bar: the file actions, the presets, the
+    /// history and the settings. It has no submenus: they open beside the
+    /// menu, which a narrow touch screen has no room for.
+    fn main_menu(
+        &mut self,
+        ui: &mut Ui,
+        actions: &mut Vec<Action>,
+        tip: &dyn Fn(&str, &KeyboardShortcut) -> String,
+    ) {
+        let width = MENU_WIDTH.min(ui.ctx().content_rect().width() - 24.0);
+        let response = ui
+            .menu_button("☰", |ui| {
+                ui.set_width(width);
+                self.file_buttons(ui, actions, tip);
+                if let Some(file) = &self.file {
+                    ui.separator();
+                    ui.weak("Presets");
+                    ui.add_enabled_ui(self.game == Game::Crash3, |ui| {
+                        self.crash3.presets_menu(ui, &file.doc);
+                    });
+                    ui.separator();
+                    let doc = &file.doc;
+                    let any = doc.history().next().is_some() || doc.redo_history().next().is_some();
+                    if ui
+                        .add_enabled(any, Button::new("History…"))
+                        .on_hover_text("Every step undo and redo can reach")
+                        .on_disabled_hover_text("Nothing to undo or redo")
+                        .clicked()
+                    {
+                        self.dialog = Some(Dialog::History);
+                    }
+                }
+                ui.separator();
+                self.settings_entries(ui);
+                let theme = if self.dark {
+                    "Light theme"
+                } else {
+                    "Dark theme"
+                };
+                if ui.button(theme).clicked() {
+                    self.dark = !self.dark;
+                }
+                if self.debug_menu() {
+                    ui.separator();
+                    ui.weak("Debug");
+                    ui.checkbox(&mut self.gallery_open, "Icon gallery");
+                }
+            })
+            .response;
+        let response = response.on_hover_text("Menu");
+        response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, "Menu"));
+    }
+
     fn undo_redo(
         &self,
         ui: &mut Ui,
         actions: &mut Vec<Action>,
         tip: &dyn Fn(&str, &KeyboardShortcut) -> String,
     ) {
-        let doc = self.file.as_ref().map(|f| &f.doc);
-        let undo = doc.and_then(|d| d.history().last());
-        let redo = doc.and_then(|d| d.redo_history().next());
+        self.undo_button(ui, actions, tip);
+        self.redo_button(ui, actions, tip);
+    }
+
+    fn undo_button(
+        &self,
+        ui: &mut Ui,
+        actions: &mut Vec<Action>,
+        tip: &dyn Fn(&str, &KeyboardShortcut) -> String,
+    ) {
+        let undo = self.file.as_ref().and_then(|f| f.doc.history().last());
         let response = ui
             .add_enabled(undo.is_some(), Button::new("⟲"))
             .on_disabled_hover_text("Nothing to undo");
@@ -1218,6 +1380,15 @@ impl App {
         if response.clicked() {
             actions.push(Action::Undo);
         }
+    }
+
+    fn redo_button(
+        &self,
+        ui: &mut Ui,
+        actions: &mut Vec<Action>,
+        tip: &dyn Fn(&str, &KeyboardShortcut) -> String,
+    ) {
+        let redo = self.file.as_ref().and_then(|f| f.doc.redo_history().next());
         let response = ui
             .add_enabled(redo.is_some(), Button::new("⟳"))
             .on_disabled_hover_text("Nothing to redo");
@@ -1230,55 +1401,21 @@ impl App {
         }
     }
 
-    /// The steps undo and redo can reach; a click goes back or forward to
-    /// one of them.
+    /// The History menu of the toolbar.
     fn history_menu(&self, ui: &mut Ui, actions: &mut Vec<Action>) {
         let Some(file) = &self.file else {
             return;
         };
         let doc = &file.doc;
-        let done: Vec<&str> = doc.history().collect();
-        let undone: Vec<&str> = doc.redo_history().collect();
-        let enabled = !done.is_empty() || !undone.is_empty();
+        let enabled = doc.history().next().is_some() || doc.redo_history().next().is_some();
         ui.add_enabled_ui(enabled, |ui| {
             ui.menu_button("History", |ui| {
                 ui.set_min_width(260.0);
-                // The oldest steps are dropped beyond the undo depth.
-                let start = if done.len() < nsane::UNDO_DEPTH {
-                    format!("Opened {}", file.name())
-                } else {
-                    "Oldest step kept".to_owned()
-                };
-                let current = done.len();
                 egui::ScrollArea::vertical()
                     .max_height(360.0)
                     .show(ui, |ui| {
-                        let entries = std::iter::once(start.as_str())
-                            .chain(done.iter().copied())
-                            .chain(undone.iter().copied());
-                        for (position, label) in entries.enumerate() {
-                            let text = if position > current {
-                                RichText::new(label).weak().italics()
-                            } else {
-                                RichText::new(label)
-                            };
-                            let response = ui
-                                .add(Button::selectable(position == current, text))
-                                .on_hover_text(match position.cmp(&current) {
-                                    std::cmp::Ordering::Less => "Undo back to this step",
-                                    std::cmp::Ordering::Equal => "The save as it is now",
-                                    std::cmp::Ordering::Greater => "Redo up to this step",
-                                });
-                            if response.clicked() {
-                                let action = if position < current {
-                                    Action::Undo
-                                } else {
-                                    Action::Redo
-                                };
-                                let steps = position.abs_diff(current);
-                                actions.extend(std::iter::repeat_n(action, steps));
-                                ui.close();
-                            }
+                        if history_list(ui, file, actions) {
+                            ui.close();
                         }
                     });
             })
@@ -1289,21 +1426,24 @@ impl App {
     }
 
     fn settings_menu(&mut self, ui: &mut Ui) {
-        ui.menu_button("⚙", |ui| {
-            let mut review = !self.prefs.skip_save_review;
-            if ui
-                .checkbox(&mut review, "Review the changes before saving")
-                .changed()
-            {
-                self.prefs.skip_save_review = !review;
-            }
-            ui.separator();
-            if ui.button("About…").clicked() {
-                self.dialog = Some(Dialog::About);
-            }
-        })
-        .response
-        .on_hover_text("Settings");
+        ui.menu_button("⚙", |ui| self.settings_entries(ui))
+            .response
+            .on_hover_text("Settings");
+    }
+
+    /// The review checkbox and About…, in the ⚙ menu or the ☰ menu.
+    fn settings_entries(&mut self, ui: &mut Ui) {
+        let mut review = !self.prefs.skip_save_review;
+        if ui
+            .checkbox(&mut review, "Review the changes before saving")
+            .changed()
+        {
+            self.prefs.skip_save_review = !review;
+        }
+        ui.separator();
+        if ui.button("About…").clicked() {
+            self.dialog = Some(Dialog::About);
+        }
     }
 
     fn theme_toggle(&mut self, ui: &mut Ui) {
@@ -1337,33 +1477,87 @@ impl App {
             });
     }
 
-    fn document_ui(&mut self, ui: &mut Ui, actions: &mut Vec<Action>) {
-        self.game_tabs(ui);
+    /// The bar at the bottom of a phone: the overview or the rooms, and the
+    /// diagnostics.
+    fn bottom_bar(&mut self, ui: &mut Ui) {
+        let Some(file) = &self.file else {
+            return;
+        };
+        let shown = egui::Panel::bottom("pages")
+            .frame(bar_frame(ui))
+            .min_size(BOTTOM_BAR_HEIGHT)
+            .show(ui, |ui| {
+                ui.horizontal_centered(|ui| {
+                    let spacing = ui.spacing().item_spacing.x;
+                    let badges = self.crash3.diagnostics_badges_width(ui, &file.doc);
+                    let badges = if badges > 0.0 { badges + spacing } else { 0.0 };
+                    let width = ((ui.available_width() - badges - spacing) / 2.0).max(60.0);
+                    for (page, text, name) in [
+                        (Page::Overview, "Overview", "Show the overview"),
+                        (Page::Rooms, "Rooms", "Show the rooms"),
+                    ] {
+                        let on = self.page == page;
+                        let response =
+                            ui.add_sized([width, PAGE_BUTTON_HEIGHT], Button::selectable(on, text));
+                        response.widget_info(|| {
+                            WidgetInfo::selected(WidgetType::Button, true, on, name)
+                        });
+                        if response.clicked() {
+                            self.nav.push(Nav::Page(page));
+                        }
+                    }
+                    self.crash3.diagnostics_badges(ui, &file.doc);
+                });
+            });
+        self.bottom_bar_height = shown.response.rect.height();
+    }
+
+    fn document_ui(&mut self, ui: &mut Ui, actions: &mut Vec<Action>, class: Class) {
+        if class == Class::Phone {
+            self.bottom_bar(ui);
+        } else {
+            self.game_tabs(ui);
+        }
         let Some(file) = &self.file else {
             return;
         };
         let doc = &file.doc;
-        egui::Panel::left("overview")
-            .frame(side_frame(ui))
-            .resizable(true)
-            .default_size(240.0)
-            .min_size(180.0)
-            .show(ui, |ui| {
-                self.crash3
-                    .overview(ui, doc, self.selected, &mut self.nav, actions)
-            });
-        egui::CentralPanel::default()
-            .frame(central_frame(ui))
-            .show(ui, |ui| {
-                self.crash3
-                    .central(ui, doc, &mut self.selected, &mut self.nav, actions)
-            });
+        let mut shown = self.selected;
+        if class != Class::Phone {
+            egui::Panel::left("overview")
+                .frame(side_frame(ui))
+                .resizable(true)
+                .default_size(240.0)
+                .min_size(180.0)
+                .show(ui, |ui| {
+                    self.crash3
+                        .overview(ui, doc, self.selected, &mut self.nav, actions)
+                });
+        }
+        if class == Class::Phone && self.page == Page::Overview {
+            shown = None;
+            egui::CentralPanel::default()
+                .frame(side_frame(ui))
+                .show(ui, |ui| {
+                    game_combo(ui, &mut self.game);
+                    ui.add_space(theme::SPACING);
+                    self.crash3
+                        .overview(ui, doc, self.selected, &mut self.nav, actions)
+                });
+        } else {
+            egui::CentralPanel::default()
+                .frame(central_frame(ui))
+                .show(ui, |ui| {
+                    self.crash3
+                        .central(ui, doc, &mut self.selected, &mut self.nav, actions)
+                });
+        }
         let ctx = ui.ctx().clone();
         self.crash3
-            .windows(&ctx, doc, self.selected, &mut self.nav, actions);
+            .windows(&ctx, doc, shown, &mut self.nav, actions);
     }
 
-    fn dialogs(&mut self, ctx: &Context) {
+    fn dialogs(&mut self, ctx: &Context, actions: &mut Vec<Action>) {
         let Some(current) = &self.dialog else {
             return;
         };
@@ -1504,6 +1698,25 @@ impl App {
                     );
                 close |= shown.cancelled || shown.confirmed;
             }
+            Dialog::History => {
+                let shown = dialog::Dialog::new("history", "History")
+                    .subtitle("A click goes back or forward to a step")
+                    .width(400.0)
+                    .show(
+                        ctx,
+                        |ui| {
+                            self.file
+                                .as_ref()
+                                .is_some_and(|file| history_list(ui, file, actions))
+                        },
+                        |ui, _| {
+                            if dialog::primary(ui, "Close", true, None).clicked() {
+                                close = true;
+                            }
+                        },
+                    );
+                close |= shown.cancelled || shown.inner;
+            }
             #[cfg(target_arch = "wasm32")]
             Dialog::DownloadAs(name) => {
                 let mut name = name.clone();
@@ -1585,11 +1798,24 @@ impl App {
         }
         let pal = theme::palette(self.dark);
         let mut dismissed = None;
+        let margin = 2.0 * theme::SPACING;
+        // On a phone: the width of the screen, above the bottom bar.
+        let phone = layout::current(ctx) == Class::Phone;
+        let (anchor, offset, width) = if phone {
+            let width = ctx.content_rect().width() - 2.0 * PHONE_TOAST_MARGIN;
+            let above = -(self.bottom_bar_height + PHONE_TOAST_MARGIN);
+            (Align2::CENTER_BOTTOM, Vec2::new(0.0, above), width)
+        } else {
+            (Align2::RIGHT_BOTTOM, Vec2::splat(-margin), TOAST_WIDTH)
+        };
         egui::Area::new(Id::new("toasts"))
-            .anchor(Align2::RIGHT_BOTTOM, Vec2::splat(-2.0 * theme::SPACING))
+            .anchor(anchor, offset)
             .order(egui::Order::Foreground)
             .show(ctx, |ui| {
-                ui.set_max_width(420.0);
+                ui.set_max_width(width);
+                if phone {
+                    ui.set_min_width(width);
+                }
                 for (i, toast) in self.toasts.iter_mut().enumerate() {
                     let seconds = match toast.kind {
                         ToastKind::Info => TOAST_SECONDS,
@@ -1602,7 +1828,12 @@ impl App {
                     };
                     let response = Frame::popup(ui.style())
                         .stroke(egui::Stroke::new(1.0, accent))
-                        .show(ui, |ui| ui.label(toast.text.as_str()))
+                        .show(ui, |ui| {
+                            if phone {
+                                ui.set_width(ui.available_width());
+                            }
+                            ui.label(toast.text.as_str())
+                        })
                         .response
                         .interact(Sense::click())
                         .on_hover_text("Click to dismiss");
@@ -1641,6 +1872,13 @@ impl App {
     /// Draws one frame and runs what the user asked for.
     pub fn show(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
+        // Kept while a field has focus: an on-screen keyboard that shortens
+        // the page must not move the field away.
+        if !self.had_focus {
+            self.class = layout::classify(ctx.content_rect().size(), self.touch_screen);
+        }
+        layout::set(&ctx, self.class);
+        let class = self.class;
         let dark = self.dark;
         if self.gallery_only {
             egui::CentralPanel::default().show(ui, |ui| self.gallery.ui(ui, &mut self.dark));
@@ -1653,9 +1891,13 @@ impl App {
             #[cfg(target_arch = "wasm32")]
             self.incoming(&mut actions);
             self.close_requested(&ctx);
-            self.toolbar(ui, &mut actions);
+            match class {
+                Class::Wide => self.full_toolbar(ui, &mut actions),
+                Class::Medium | Class::Phone => self.compact_bar(ui, &mut actions, class),
+            }
+            self.bottom_bar_height = 0.0;
             if self.file.is_some() {
-                self.document_ui(ui, &mut actions);
+                self.document_ui(ui, &mut actions, class);
             } else {
                 egui::CentralPanel::default()
                     .frame(central_frame(ui))
@@ -1667,7 +1909,7 @@ impl App {
             }
             self.navigate();
             self.convert_dialog(&ctx, &mut actions);
-            self.dialogs(&ctx);
+            self.dialogs(&ctx, &mut actions);
             self.toasts(&ctx);
             self.drop_hint(&ctx);
             egui::Window::new("Icon gallery")
@@ -1756,20 +1998,39 @@ pub fn static_icon(ui: &mut Ui, icon: Icon, size: f32) -> egui::Response {
 
 /// File name, platform badge, size budget and unsaved changes.
 fn status(ui: &mut Ui, file: &mut OpenFile) {
-    let pal = theme::palette(ui.visuals().dark_mode);
-    let name = ui.add(egui::Label::new(theme::bold(file.name())).extend());
+    file_name(ui, file, true);
+    platform_pill(ui, file.doc.platform());
+    size_budget(ui, file);
+    change_count(ui, file);
+}
+
+/// The name of the open file, in full when `extend`, else shortened to the
+/// width it is given. The desktop shows its place on disk when hovered.
+fn file_name(ui: &mut Ui, file: &OpenFile, extend: bool) {
+    let label = egui::Label::new(theme::bold(file.name()));
+    let label = if extend {
+        label.extend()
+    } else {
+        label.truncate()
+    };
+    let name = ui.add(label);
     #[cfg(not(target_arch = "wasm32"))]
     if let Some(path) = &file.path {
         name.on_hover_text(path.display().to_string());
     }
     #[cfg(target_arch = "wasm32")]
     let _ = name;
+}
 
-    let platform = file.doc.platform();
+/// The space on each side of the platform's name, in its pill.
+const PILL_MARGIN: f32 = 8.0;
+
+fn platform_pill(ui: &mut Ui, platform: nsane::Platform) {
+    let pal = theme::palette(ui.visuals().dark_mode);
     Frame::new()
         .fill(pal.selection)
         .corner_radius(theme::ROUNDING_SMALL)
-        .inner_margin(Margin::symmetric(8, 2))
+        .inner_margin(Margin::symmetric(PILL_MARGIN as i8, 2))
         .show(ui, |ui| {
             let text = theme::bold(platform.name()).color(pal.selected_text);
             ui.add(egui::Label::new(text).extend());
@@ -1779,37 +2040,179 @@ fn status(ui: &mut Ui, file: &mut OpenFile) {
             nsane::Platform::Switch => "A Nintendo Switch save: written back at its fixed size",
             nsane::Platform::Pc => "A PC save: written back at the size of its content",
         });
+}
 
+/// "64 / 150 KB", for a Switch save.
+fn size_text(file: &OpenFile) -> Option<String> {
     let size = file.doc.size_report();
-    if let Some(capacity) = size.capacity {
-        let color = if !size.fits() {
-            pal.error_text
-        } else if size.used * 100 > capacity * BUDGET_WARNING_PERCENT {
-            pal.warning_text
-        } else {
-            pal.text_weak
-        };
-        let text = RichText::new(format!("{} / {} KB", kib(size.used), kib(capacity))).color(color);
-        ui.add(egui::Label::new(text).extend())
-            .on_hover_text(format!(
-                "The save data takes {} of the {} bytes of a Switch save file.",
-                size.used, capacity
-            ));
-    }
+    let capacity = size.capacity?;
+    Some(format!("{} / {} KB", kib(size.used), kib(capacity)))
+}
 
-    if file.doc.is_dirty() {
-        let count = file.change_count();
-        let text = if count == 0 {
-            "• unsaved".to_owned()
-        } else {
-            format!("• {}", plural(count, "change", "changes"))
-        };
-        ui.add(egui::Label::new(RichText::new(text).color(pal.warning_text)).extend())
-            .on_hover_text(format!(
-                "Not saved yet. {} since the file was opened.",
-                plural(count, "change", "changes")
-            ));
+/// How much of its fixed size a Switch save takes: amber when nearly full,
+/// red when it doesn't fit.
+fn size_budget(ui: &mut Ui, file: &OpenFile) {
+    let pal = theme::palette(ui.visuals().dark_mode);
+    let size = file.doc.size_report();
+    let (Some(capacity), Some(text)) = (size.capacity, size_text(file)) else {
+        return;
+    };
+    let color = if !size.fits() {
+        pal.error_text
+    } else if size.used * 100 > capacity * BUDGET_WARNING_PERCENT {
+        pal.warning_text
+    } else {
+        pal.text_weak
+    };
+    ui.add(egui::Label::new(RichText::new(text).color(color)).extend())
+        .on_hover_text(format!(
+            "The save data takes {} of the {} bytes of a Switch save file.",
+            size.used, capacity
+        ));
+}
+
+/// "• 3 changes", or "• unsaved" when the changes cancel out.
+fn changes_text(file: &mut OpenFile) -> String {
+    match file.change_count() {
+        0 => "• unsaved".to_owned(),
+        count => format!("• {}", plural(count, "change", "changes")),
     }
+}
+
+/// The unsaved changes, while there are some.
+fn change_count(ui: &mut Ui, file: &mut OpenFile) {
+    if !file.doc.is_dirty() {
+        return;
+    }
+    let pal = theme::palette(ui.visuals().dark_mode);
+    let text = changes_text(file);
+    let count = file.change_count();
+    ui.add(egui::Label::new(RichText::new(text).color(pal.warning_text)).extend())
+        .on_hover_text(format!(
+            "Not saved yet. {} since the file was opened.",
+            plural(count, "change", "changes")
+        ));
+}
+
+/// The steps undo and redo can reach, from the file's opening to the last
+/// step undone. A click goes back or forward to one: returns whether one
+/// was clicked.
+fn history_list(ui: &mut Ui, file: &OpenFile, actions: &mut Vec<Action>) -> bool {
+    let doc = &file.doc;
+    let done: Vec<&str> = doc.history().collect();
+    let undone: Vec<&str> = doc.redo_history().collect();
+    // The oldest steps are dropped beyond the undo depth.
+    let start = if done.len() < nsane::UNDO_DEPTH {
+        format!("Opened {}", file.name())
+    } else {
+        "Oldest step kept".to_owned()
+    };
+    let current = done.len();
+    let entries = std::iter::once(start.as_str())
+        .chain(done.iter().copied())
+        .chain(undone.iter().copied());
+    let mut clicked = false;
+    for (position, label) in entries.enumerate() {
+        let text = if position > current {
+            RichText::new(label).weak().italics()
+        } else {
+            RichText::new(label)
+        };
+        let response = ui
+            .add(Button::selectable(position == current, text))
+            .on_hover_text(match position.cmp(&current) {
+                std::cmp::Ordering::Less => "Undo back to this step",
+                std::cmp::Ordering::Equal => "The save as it is now",
+                std::cmp::Ordering::Greater => "Redo up to this step",
+            });
+        if response.clicked() {
+            let action = if position < current {
+                Action::Undo
+            } else {
+                Action::Redo
+            };
+            let steps = position.abs_diff(current);
+            actions.extend(std::iter::repeat_n(action, steps));
+            clicked = true;
+        }
+    }
+    clicked
+}
+
+/// The game picker of a phone, at the top of its overview page, in place of
+/// the game tabs.
+fn game_combo(ui: &mut Ui, current: &mut Game) {
+    let response = egui::ComboBox::from_id_salt("game")
+        .selected_text(current.title())
+        .width(ui.available_width().min(MENU_WIDTH))
+        .show_ui(ui, |ui| {
+            for game in Game::ALL {
+                let response = ui
+                    .add_enabled(
+                        game.available(),
+                        Button::selectable(*current == game, game.title()),
+                    )
+                    .on_disabled_hover_text("Coming later");
+                if response.clicked() {
+                    *current = game;
+                }
+            }
+        })
+        .response;
+    response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, "Game"));
+}
+
+/// The status of the compact bar: the file name, shortened to leave room
+/// for what follows it, and the platform; on a medium window the size
+/// budget and the change count, on a phone a dot for unsaved changes.
+fn compact_status(ui: &mut Ui, file: &mut OpenFile, class: Class) {
+    let medium = class == Class::Medium;
+    let platform = file.doc.platform();
+    let size = size_text(file);
+    let changes = file.doc.is_dirty().then(|| changes_text(file));
+    let spacing = ui.spacing().item_spacing.x;
+    let mut after = text_width(ui, theme::bold(platform.name())) + 2.0 * PILL_MARGIN + spacing;
+    if medium {
+        if let Some(size) = &size {
+            after += text_width(ui, size.as_str()) + spacing;
+        }
+        if let Some(changes) = &changes {
+            after += text_width(ui, changes.as_str()) + spacing;
+        }
+    } else if changes.is_some() {
+        after += text_width(ui, "•") + spacing;
+    }
+    let width = (ui.available_width() - after).max(48.0);
+    ui.scope(|ui| {
+        ui.set_max_width(width);
+        file_name(ui, file, false);
+    });
+    platform_pill(ui, platform);
+    if medium {
+        size_budget(ui, file);
+        change_count(ui, file);
+    } else if file.doc.is_dirty() {
+        let count = file.change_count();
+        let pal = theme::palette(ui.visuals().dark_mode);
+        let name = plural(count, "change", "changes");
+        let response = ui
+            .add(egui::Label::new(RichText::new("•").color(pal.warning_text)).extend())
+            .on_hover_text(format!("Not saved yet. {name} since the file was opened."));
+        response.widget_info(|| WidgetInfo::labeled(WidgetType::Label, true, &name));
+    }
+}
+
+/// How wide `text` is, on one line.
+fn text_width(ui: &Ui, text: impl Into<egui::WidgetText>) -> f32 {
+    text.into()
+        .into_galley(
+            ui,
+            Some(egui::TextWrapMode::Extend),
+            f32::INFINITY,
+            egui::TextStyle::Body,
+        )
+        .size()
+        .x
 }
 
 /// Where the reviewed save goes: the file and its backup, or the download.
@@ -1877,16 +2280,29 @@ fn drop_zone(ui: &mut Ui) -> egui::Response {
         ),
         ("PC: ALCHEMYXSAVE_<n>.sav", theme::FONT_BODY, pal.text_weak),
     ];
-    let mut y = rect.center().y - 50.0;
-    for (i, (text, size, color)) in lines.into_iter().enumerate() {
-        painter.text(
-            egui::pos2(rect.center().x, y),
-            Align2::CENTER_CENTER,
-            text,
-            egui::FontId::proportional(size),
-            color,
-        );
-        y += if i == 0 { 40.0 } else { 24.0 };
+    // Each line wraps inside the zone, centred, a phone's included.
+    let wrap = rect.width() - 4.0 * theme::SPACING;
+    let galleys: Vec<_> = lines
+        .into_iter()
+        .map(|(text, size, color)| {
+            let mut job = egui::text::LayoutJob::simple(
+                text.to_owned(),
+                egui::FontId::proportional(size),
+                color,
+                wrap,
+            );
+            job.halign = Align::Center;
+            ui.fonts_mut(|f| f.layout_job(job))
+        })
+        .collect();
+    // More space under the title than between the other lines.
+    let gaps = [18.0, 6.0, 6.0, 0.0];
+    let height: f32 = galleys.iter().map(|g| g.size().y).sum::<f32>() + gaps.iter().sum::<f32>();
+    let mut y = rect.center().y - height / 2.0;
+    for (galley, gap) in galleys.into_iter().zip(gaps) {
+        let size = galley.size();
+        painter.galley(egui::pos2(rect.center().x, y), galley, pal.text);
+        y += size.y + gap;
     }
     response.on_hover_cursor(egui::CursorIcon::PointingHand)
 }

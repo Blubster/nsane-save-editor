@@ -77,6 +77,12 @@ impl Crash3Ui {
         self.diagnostics.open = true;
     }
 
+    /// On a phone the diagnostics are a sheet over the page: it closes when
+    /// a level is shown.
+    pub fn close_diagnostics(&mut self) {
+        self.diagnostics.open = false;
+    }
+
     #[cfg(test)]
     pub fn diagnostics_open(&self) -> bool {
         self.diagnostics.open
@@ -86,6 +92,11 @@ impl Crash3Ui {
     #[cfg(test)]
     pub fn preset_preview_runs(&self) -> Option<usize> {
         self.presets.preview_runs()
+    }
+
+    /// How wide the badges of [`Self::diagnostics_badges`] are.
+    pub fn diagnostics_badges_width(&self, ui: &egui::Ui, doc: &Document) -> f32 {
+        diagnostics_ui::badges_width(ui, doc.diagnostics())
     }
 
     /// A badge per diagnostic severity, for the toolbar; a click opens the
@@ -142,7 +153,9 @@ impl Crash3Ui {
         actions: &mut Vec<Action>,
     ) {
         let totals = doc.current().totals();
+        // On a phone, the overview is a page drawn where the rooms are.
         egui::ScrollArea::vertical()
+            .id_salt("overview")
             .auto_shrink([false, true])
             .show(ui, |ui| {
                 ui.heading("Overview");

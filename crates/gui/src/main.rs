@@ -44,7 +44,7 @@ fn main() -> eframe::Result {
             // names the settings folder, and the window for the desktop
             .with_app_id(app::APP_ID)
             .with_icon(app_icon::window_icon())
-            .with_inner_size(options.size.unwrap_or([1024.0, 720.0]))
+            .with_inner_size(options.size.unwrap_or([1280.0, 800.0]))
             .with_min_inner_size([480.0, 320.0])
             .with_maximized(options.maximized),
         // Only the settings of `Prefs` are kept: a window size or panel

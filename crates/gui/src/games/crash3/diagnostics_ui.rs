@@ -11,6 +11,7 @@ use super::preview::severity_icon;
 use crate::app::{Action, Nav};
 use crate::dialog::plural;
 use crate::icons::{self, IconState};
+use crate::layout::{self, Class};
 use crate::theme::{self, SPACING};
 
 const SEVERITIES: [(Severity, &str, &str); 3] = [
@@ -19,23 +20,43 @@ const SEVERITIES: [(Severity, &str, &str); 3] = [
     (Severity::Info, "note", "notes"),
 ];
 
+/// The panel's width beside the editor.
+const PANEL_WIDTH: f32 = 460.0;
+/// The least height of a badge on a phone.
+const PHONE_HIT: f32 = 32.0;
+
 /// What the panel keeps between frames.
 #[derive(Debug, Default)]
 pub struct DiagnosticsPanel {
     pub open: bool,
 }
 
-/// An icon and a count, clickable; named "2 warnings" for screen readers.
-fn count_badge(ui: &mut Ui, severity: Severity, count: usize, name: &str) -> Response {
-    let text = count.to_string();
+/// The size of a badge showing `count`: on a phone, tall enough to tap.
+fn badge_size(ui: &Ui, galley: &egui::Galley) -> Vec2 {
+    let icon = theme::ICON_SMALL;
+    let height = icon.max(galley.size().y) + 4.0;
+    let min_height = match layout::current(ui.ctx()) {
+        Class::Phone => PHONE_HIT,
+        _ => 0.0,
+    };
+    Vec2::new(
+        4.0 + icon + 4.0 + galley.size().x + 6.0,
+        height.max(min_height),
+    )
+}
+
+fn count_galley(ui: &Ui, count: usize) -> std::sync::Arc<egui::Galley> {
     let font = egui::TextStyle::Body.resolve(ui.style());
     let color = ui.visuals().text_color();
-    let galley = ui.painter().layout_no_wrap(text, font, color);
+    ui.painter().layout_no_wrap(count.to_string(), font, color)
+}
+
+/// An icon and a count, clickable; named "2 warnings" for screen readers.
+fn count_badge(ui: &mut Ui, severity: Severity, count: usize, name: &str) -> Response {
+    let color = ui.visuals().text_color();
+    let galley = count_galley(ui, count);
     let icon = theme::ICON_SMALL;
-    let size = Vec2::new(
-        4.0 + icon + 4.0 + galley.size().x + 6.0,
-        icon.max(galley.size().y) + 4.0,
-    );
+    let size = badge_size(ui, &galley);
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
     if ui.is_rect_visible(rect) {
         let pal = theme::palette(ui.visuals().dark_mode);
@@ -62,6 +83,18 @@ fn count_badge(ui: &mut Ui, severity: Severity, count: usize, name: &str) -> Res
     }
     response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, name));
     response.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// How wide [`badges`] are, with the space between them.
+pub fn badges_width(ui: &Ui, all: &[Diagnostic]) -> f32 {
+    let widths: Vec<f32> = SEVERITIES
+        .iter()
+        .map(|&(severity, ..)| all.iter().filter(|d| d.severity == severity).count())
+        .filter(|&count| count > 0)
+        .map(|count| badge_size(ui, &count_galley(ui, count)).x)
+        .collect();
+    let gaps = widths.len().saturating_sub(1) as f32 * ui.spacing().item_spacing.x;
+    widths.iter().sum::<f32>() + gaps
 }
 
 /// A badge per severity present. Returns whether one was clicked.
@@ -108,16 +141,32 @@ impl DiagnosticsPanel {
         actions: &mut Vec<Action>,
     ) {
         let mut open = self.open;
-        egui::Window::new("Diagnostics")
+        let screen = ctx.content_rect();
+        let window = egui::Window::new("Diagnostics")
             .id(egui::Id::new("diagnostics-panel"))
             .open(&mut open)
             .collapsible(false)
-            .frame(crate::dialog::window_frame(ctx))
-            .default_width(460.0)
-            .default_height(420.0)
-            .pivot(egui::Align2::RIGHT_TOP)
-            .default_pos(ctx.content_rect().right_top() + Vec2::new(-24.0, 96.0))
-            .show(ctx, |ui| list(ui, doc, shown, nav, actions));
+            .frame(crate::dialog::window_frame(ctx));
+        // A sheet over the whole screen on a phone; beside the editor, and
+        // inside the window, elsewhere.
+        let window = match layout::current(ctx) {
+            Class::Phone => window
+                .fixed_rect(screen.shrink(crate::dialog::SHEET_MARGIN))
+                .movable(false)
+                .resizable(false),
+            _ => window
+                .default_width(PANEL_WIDTH.min(screen.width() - 32.0))
+                .default_height(420.0)
+                .pivot(egui::Align2::RIGHT_TOP)
+                .default_pos(screen.right_top() + Vec2::new(-24.0, 96.0)),
+        };
+        let sheet = layout::current(ctx) == Class::Phone;
+        window.show(ctx, |ui| {
+            if sheet {
+                ui.set_min_height(ui.available_height());
+            }
+            list(ui, doc, shown, nav, actions);
+        });
         self.open = open;
     }
 }

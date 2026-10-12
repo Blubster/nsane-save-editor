@@ -6,6 +6,8 @@
 //! unless a menu is open over the dialog; Enter confirms only the dialogs
 //! that allow it. A click on the backdrop does nothing, so that a stray
 //! click doesn't lose the options picked.
+//!
+//! On a phone a dialog is a sheet: the width of the screen, near its top.
 
 use egui::{
     Align, Align2, Context, Frame, Grid, Id, Key, Label, Layout, Margin, Modal, Modifiers, Rect,
@@ -15,12 +17,15 @@ use egui::{
 
 use crate::app::static_icon;
 use crate::icons::Icon;
+use crate::layout::{self, Class};
 use crate::theme::{self, SPACING};
 
 /// Space between the edge of a dialog and its content.
 const PAD: i8 = 20;
 /// The least space left between a dialog and the edge of the window.
 const SCREEN_MARGIN: f32 = 16.0;
+/// Around a sheet, on a phone.
+pub const SHEET_MARGIN: f32 = 8.0;
 /// Reserved for the footer when the body's height is limited.
 const FOOTER_HEIGHT: f32 = 64.0;
 /// The body never gets shorter than this, however small the window.
@@ -105,10 +110,13 @@ impl Dialog {
         let style = ctx.global_style();
         let pal = theme::palette(style.visuals.dark_mode);
         let screen = ctx.content_rect();
-        let width = self
-            .width
-            .min(screen.width() - 2.0 * SCREEN_MARGIN)
-            .max(160.0);
+        let sheet = layout::current(ctx) == Class::Phone;
+        let margin = if sheet { SHEET_MARGIN } else { SCREEN_MARGIN };
+        let width = if sheet {
+            screen.width() - 2.0 * SHEET_MARGIN
+        } else {
+            self.width.min(screen.width() - 2.0 * margin).max(160.0)
+        };
         let frame = Frame::new()
             .fill(pal.surface)
             .stroke(Stroke::new(1.0, pal.border))
@@ -123,12 +131,12 @@ impl Dialog {
         // opened again starts centred on the height it had last time.
         let saved = ctx.data(|d| d.get_temp::<Placement>(place_id));
         let open = saved.is_some_and(|p| p.frame_nr + 1 >= frame_nr);
-        let centred =
-            |height: f32| screen.top() + ((screen.height() - height) / 2.0).max(SCREEN_MARGIN);
+        let centred = |height: f32| screen.top() + ((screen.height() - height) / 2.0).max(margin);
         let top = match saved {
+            _ if sheet => screen.top() + margin,
             Some(p) if open => p.top,
             Some(p) => centred(p.height),
-            None => screen.top() + SCREEN_MARGIN,
+            None => screen.top() + margin,
         };
         let area =
             Modal::default_area(id).anchor(Align2::CENTER_TOP, vec2(0.0, top - screen.top()));
@@ -139,14 +147,16 @@ impl Dialog {
             // frame, moving each time. Offer it all the height at once:
             // the body's scroll area limits it.
             ui.scope_builder(UiBuilder::new().max_rect(unbounded(ui)), |ui| {
-                self.contents(ui, screen.height(), body, footer)
+                self.contents(ui, screen.height() - 2.0 * margin, body, footer)
             })
             .inner
         });
         let height = response.response.rect.height();
-        let top = if open {
-            let lowest = screen.bottom() - SCREEN_MARGIN - height;
-            top.min(lowest).max(screen.top() + SCREEN_MARGIN)
+        let top = if sheet {
+            top
+        } else if open {
+            let lowest = screen.bottom() - margin - height;
+            top.min(lowest).max(screen.top() + margin)
         } else {
             centred(height)
         };
@@ -173,12 +183,12 @@ impl Dialog {
         }
     }
 
-    /// The header, the body that scrolls past what the screen leaves it, a
-    /// line, and the footer.
+    /// The header, the body that scrolls past what the screen leaves it
+    /// (`height`, the screen less its margins), a line, and the footer.
     fn contents<R>(
         &self,
         ui: &mut Ui,
-        screen_height: f32,
+        height: f32,
         body: impl FnOnce(&mut Ui) -> R,
         footer: impl FnOnce(&mut Ui, &R),
     ) -> R {
@@ -186,8 +196,7 @@ impl Dialog {
         let top = ui.cursor().top();
         header(ui, self);
         let header_height = ui.cursor().top() - top;
-        let max_body = (screen_height - 2.0 * SCREEN_MARGIN - header_height - FOOTER_HEIGHT)
-            .max(MIN_BODY_HEIGHT);
+        let max_body = (height - header_height - FOOTER_HEIGHT).max(MIN_BODY_HEIGHT);
         let inner = ScrollArea::vertical()
             .id_salt(self.id.with("body"))
             .max_height(max_body)
@@ -228,6 +237,13 @@ impl Dialog {
             });
         inner
     }
+}
+
+/// The area of the dialog made with `Dialog::new(id, ..)`: its rect is in
+/// egui's memory once it was shown.
+#[cfg(test)]
+pub fn area_id(id: &str) -> Id {
+    Id::new(id)
 }
 
 /// The rest of `ui`'s width, with no limit on the height.

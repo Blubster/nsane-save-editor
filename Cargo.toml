@@ -42,6 +42,7 @@ web-sys = { version = "0.3.70", features = [
     "History",
     "HtmlAnchorElement",
     "HtmlElement",
+    "Navigator",
     "Url",
     "Window",
 ] }

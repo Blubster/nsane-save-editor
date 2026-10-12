@@ -292,3 +292,8 @@ impl BackButton {
 fn history() -> Option<web_sys::History> {
     web_sys::window()?.history().ok()
 }
+
+/// Whether the screen can be touched, read once at start.
+pub fn touch_screen() -> bool {
+    web_sys::window().is_some_and(|w| w.navigator().max_touch_points() > 0)
+}
