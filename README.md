@@ -37,7 +37,7 @@ The percentage, the totals and the other values the game shows on the save slot 
 Release builds, when there are any, are on the repository's Releases page:
 
 - **Windows:** `nsane-save-editor.exe`. Run it, there is nothing to install. Windows may warn that the program is not signed.
-- **Linux:** `nsane-save-editor`, a single x86-64 binary. It needs an X11 or Wayland desktop session and a Vulkan or OpenGL driver (Mesa's software renderer works too). File dialogs go through the desktop portal (`xdg-desktop-portal`), or `zenity` where no portal runs. Without either, open saves by dropping them onto the window or with `--open FILE.sav`.
+- **Linux:** `nsane-save-editor`, a single x86-64 binary for glibc 2.35 or newer (Ubuntu 22.04, Debian 12 and later). It needs an X11 or Wayland desktop session and a Vulkan or OpenGL driver (Mesa's software renderer works too). File dialogs go through the desktop portal (`xdg-desktop-portal`), or `zenity` where no portal runs. Without either, open saves by dropping them onto the window or with `--open FILE.sav`.
 - **Web:** the static web build runs in any recent browser. The save is read and edited in the page, and saving downloads it. Nothing is uploaded.
 
 Usage, settings, keyboard shortcuts and command-line options are described in [crates/gui/README.md](crates/gui/README.md).
@@ -70,7 +70,7 @@ trunk build --release                                    # static files in crate
 trunk build --release --public-url /nsane-save-editor/   # to serve them from a sub-path
 ```
 
-**Checks.** `scripts/check.sh` runs formatting, lints, every test and the WebAssembly build.
+**Checks.** `scripts/check.sh` runs formatting, lints, every test and the WebAssembly build. CI (`.github/workflows/ci.yml`) runs it on every push to `main` and every pull request, and builds the Windows, Linux and web versions. A `v*` tag also drafts a release with the three builds.
 
 ## How it works
 
