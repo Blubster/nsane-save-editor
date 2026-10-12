@@ -281,6 +281,8 @@ pub struct App {
     /// The conversion to the other platform, while its dialog is open.
     convert: Option<Convert>,
     toasts: Vec<Toast>,
+    /// The size of the toasts' area in the last frame.
+    toasts_size: Vec2,
     prefs: Prefs,
     /// The settings as last written to storage; `None` when they are not
     /// kept (screenshots, tests).
@@ -361,6 +363,7 @@ impl App {
             dialog: None,
             convert: None,
             toasts: Vec::new(),
+            toasts_size: Vec2::ZERO,
             prefs,
             stored_prefs: stored,
             deferred: Vec::new(),
@@ -1811,7 +1814,7 @@ impl App {
         } else {
             (Align2::RIGHT_BOTTOM, Vec2::splat(-margin), TOAST_WIDTH)
         };
-        egui::Area::new(Id::new("toasts"))
+        let shown = egui::Area::new(Id::new("toasts"))
             .anchor(anchor, offset)
             .order(egui::Order::Foreground)
             .show(ctx, |ui| {
@@ -1848,6 +1851,14 @@ impl App {
                     ));
                 }
             });
+        // An area is placed by its size in the frame before. When that
+        // changes (a phone turned, another toast), it is placed again at
+        // once, not at the next event.
+        let size = shown.response.rect.size();
+        if size != self.toasts_size {
+            self.toasts_size = size;
+            ctx.request_discard("the toasts changed size");
+        }
         if let Some(i) = dismissed {
             self.toasts.remove(i);
         }

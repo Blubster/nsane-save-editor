@@ -2351,6 +2351,26 @@ fn dialogs_are_sheets_on_a_phone() {
     assert!(rect.top() <= 16.0, "{rect:?}");
 }
 
+/// A toast stays across the screen in the first frame after a phone turns,
+/// although its area was placed by its upright width until then.
+#[test]
+fn a_toast_follows_a_phone_that_turns() {
+    let mut harness = sized(
+        Vec2::new(360.0, 740.0),
+        opening(repo_file("tests/saves/game/0018.sav")),
+    );
+    harness
+        .state_mut()
+        .toast(ToastKind::Info, "Downloaded 0018.sav.");
+    harness.run_steps(3);
+    let upright = harness.get_by_label("Downloaded 0018.sav.").rect();
+    harness.state_mut().touch_screen = true;
+    harness.set_size(Vec2::new(780.0, 330.0));
+    harness.step();
+    let turned = harness.get_by_label("Downloaded 0018.sav.").rect();
+    assert_eq!(turned.left(), upright.left(), "{turned:?}");
+}
+
 /// On a narrow phone, the review's checkbox wraps beside the buttons
 /// instead of running under them. The web's "Download" is wider than
 /// "Save file": 320 points here leave less room than 360 do there.
