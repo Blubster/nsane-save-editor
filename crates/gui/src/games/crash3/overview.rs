@@ -1,8 +1,8 @@
-//! The overview panel: progress and lives, the totals with the gems that
-//! belong to no single row of the grid (the five colored gems as a set, the
-//! bonus gem), bosses, super powers, the story and the diagnostics. Totals
-//! are counted from the save as it is now; the stored summary is only
-//! rewritten when saving.
+//! The overview: a column of cards like the warp rooms' (progress and
+//! lives, the totals with the gems that belong to no single row of the grid
+//! (the five colored gems as a set, the bonus gem), bosses, super powers,
+//! the story and the diagnostics). Totals are counted from the save as it
+//! is now; the stored summary is only rewritten when saving.
 
 use egui::{Align, DragValue, Layout, RichText, Stroke, Ui, Vec2, WidgetInfo, WidgetType};
 use nsane::Document;
@@ -16,9 +16,8 @@ use nsane::crash3::{
 
 use super::{level_row, scenes};
 use crate::app::{Action, Nav, static_icon};
-use crate::dialog;
 use crate::icons::{self, Boss, Icon, IconButton};
-use crate::theme::{self, SPACING};
+use crate::theme;
 
 /// The range the editor writes, as the lives edit accepts it.
 const LIVES_RANGE: std::ops::RangeInclusive<i32> = 0..=255;
@@ -110,6 +109,7 @@ fn count_row(ui: &mut Ui, icon: Icon, name: &str, count: String, tip: String) {
 /// Crystals, gems and relics, with the colored gems and the bonus gem under
 /// the gems.
 pub fn totals(ui: &mut Ui, doc: &Document, totals: &Totals, actions: &mut Vec<Action>) {
+    title(ui, "Collected", None, None);
     count_row(
         ui,
         Icon::Crystal,
@@ -174,20 +174,25 @@ fn colored_gems(ui: &mut Ui, doc: &Document, actions: &mut Vec<Action>) {
     });
 }
 
-/// A section title with a count on the right: "Bosses 2 / 5". The count
-/// is named "Bosses: 2 / 5" for screen readers and tests.
-fn counted_section(ui: &mut Ui, title: &str, count: String, tip: &str) {
-    ui.add_space(SPACING);
-    ui.horizontal(|ui| {
-        ui.label(theme::bold(title).size(theme::FONT_TITLE));
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            let name = format!("{title}: {count}");
-            ui.label(theme::bold(count))
-                .widget_info(|| WidgetInfo::labeled(WidgetType::Label, true, &name));
-        });
-    })
-    .response
-    .on_hover_text(tip);
+/// A card's title, as the warp rooms' are, maybe with a count on the right:
+/// "Bosses 2 / 5". The count is named "Bosses: 2 / 5" for screen readers
+/// and tests.
+fn title(ui: &mut Ui, title: &str, count: Option<String>, tip: Option<&str>) {
+    let response = ui
+        .horizontal(|ui| {
+            ui.label(theme::bold(title).size(theme::FONT_TITLE));
+            if let Some(count) = count {
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    let name = format!("{title}: {count}");
+                    ui.label(theme::bold(count))
+                        .widget_info(|| WidgetInfo::labeled(WidgetType::Label, true, &name));
+                });
+            }
+        })
+        .response;
+    if let Some(tip) = tip {
+        response.on_hover_text(tip);
+    }
     ui.add_space(2.0);
 }
 
@@ -199,11 +204,11 @@ pub fn bosses(
     selected: Option<LevelId>,
     nav: &mut Vec<Nav>,
 ) {
-    counted_section(
+    title(
         ui,
         "Bosses",
-        format!("{} / {MAX_BOSSES}", totals.bosses),
-        "Each defeated boss counts 1% and opens the next warp room",
+        Some(format!("{} / {MAX_BOSSES}", totals.bosses)),
+        Some("Each defeated boss counts 1% and opens the next warp room"),
     );
     let save = doc.current();
     ui.horizontal(|ui| {
@@ -235,11 +240,11 @@ pub fn bosses(
 pub fn super_powers(ui: &mut Ui, doc: &Document, actions: &mut Vec<Action>) {
     let save = doc.current();
     let on_count = ABILITIES.iter().filter(|&&a| save.ability(a)).count();
-    counted_section(
+    title(
         ui,
         "Super powers",
-        format!("{on_count} / {}", ABILITIES.len()),
-        "A super power works even if the boss that grants it isn't beaten (verified in game)",
+        Some(format!("{on_count} / {}", ABILITIES.len())),
+        Some("A super power works even if the boss that grants it isn't beaten (verified in game)"),
     );
     for (ability, boss) in ABILITIES.into_iter().zip(BOSSES) {
         let on = save.ability(ability);
@@ -336,7 +341,7 @@ fn bar(ui: &Ui, rect: egui::Rect, fraction: f32, color: egui::Color32) {
 /// inside a level, and the story scenes seen, whose Edit… button sets
 /// `open_scenes`.
 pub fn story(ui: &mut Ui, doc: &Document, open_scenes: &mut bool) {
-    dialog::section(ui, "Story");
+    title(ui, "Story", None, None);
     let save = doc.current();
     let cortex = BOSSES[BOSSES.len() - 1];
     // Counted from the boss, like the other totals: the stored value is only
@@ -380,13 +385,13 @@ pub fn story(ui: &mut Ui, doc: &Document, open_scenes: &mut bool) {
 /// messages.
 pub fn diagnostics(ui: &mut Ui, doc: &Document, open_panel: &mut bool) {
     let all = doc.diagnostics();
-    ui.add_space(SPACING);
     ui.horizontal(|ui| {
         ui.label(theme::bold("Diagnostics").size(theme::FONT_TITLE));
         if super::diagnostics_ui::badges(ui, all) {
             *open_panel = true;
         }
     });
+    ui.add_space(2.0);
     if all.is_empty() {
         ui.weak("No problems found.");
         return;

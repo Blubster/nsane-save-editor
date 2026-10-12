@@ -819,6 +819,21 @@ fn lives_come_first_in_the_overview() {
     assert!(field.bottom() < 720.0 / 2.0, "{field:?}");
 }
 
+/// In the smallest reference window, the grid keeps two columns beside the
+/// overview's.
+#[test]
+fn a_small_laptop_shows_two_rooms_side_by_side() {
+    let mut harness = themed(
+        Harness::builder().with_size(Vec2::new(1024.0, 720.0)),
+        opening(repo_file("tests/saves/game/0019.sav")),
+    );
+    harness.run_steps(2);
+    let first = harness.get_by_label("Warp Room 1").rect();
+    let second = harness.get_by_label("Warp Room 2").rect();
+    assert!(second.left() > first.right(), "{first:?} {second:?}");
+    assert_eq!(second.top(), first.top());
+}
+
 // ------------------------------------------------------------ level panel
 
 fn selecting(rel: &str, key: &str) -> Options {

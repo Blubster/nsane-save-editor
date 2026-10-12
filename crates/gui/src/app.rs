@@ -45,6 +45,9 @@ pub const APP_ID: &str = "nsane-save-editor";
 
 /// The ☰ menu, at most.
 const MENU_WIDTH: f32 = 280.0;
+/// The overview's column of cards, at first: in a 1024-point window the
+/// warp room grid beside it keeps two columns.
+const OVERVIEW_WIDTH: f32 = 272.0;
 /// The bar at the bottom of a phone, and its page buttons.
 const BOTTOM_BAR_HEIGHT: f32 = 44.0;
 const PAGE_BUTTON_HEIGHT: f32 = 36.0;
@@ -1524,10 +1527,11 @@ impl App {
         let mut shown = self.selected;
         if class != Class::Phone {
             egui::Panel::left("overview")
-                .frame(side_frame(ui))
+                .frame(central_frame(ui))
+                .show_separator_line(false)
                 .resizable(true)
-                .default_size(240.0)
-                .min_size(180.0)
+                .default_size(OVERVIEW_WIDTH)
+                .min_size(200.0)
                 .show(ui, |ui| {
                     self.crash3
                         .overview(ui, doc, self.selected, &mut self.nav, actions)
@@ -1536,7 +1540,7 @@ impl App {
         if class == Class::Phone && self.page == Page::Overview {
             shown = None;
             egui::CentralPanel::default()
-                .frame(side_frame(ui))
+                .frame(central_frame(ui))
                 .show(ui, |ui| {
                     game_combo(ui, &mut self.game);
                     ui.add_space(theme::SPACING);
@@ -1976,13 +1980,9 @@ fn bar_frame(ui: &Ui) -> Frame {
     Frame::side_top_panel(ui.style()).inner_margin(Margin::symmetric(theme::PANEL_MARGIN, 6))
 }
 
-/// The side panel: the overview.
-fn side_frame(ui: &Ui) -> Frame {
-    Frame::side_top_panel(ui.style()).inner_margin(Margin::same(theme::PANEL_MARGIN))
-}
-
-/// The central area, a shade apart from the panels so that the cards on it
-/// stand out. A phone keeps its width for the cards.
+/// The central area and the overview's column, a shade apart from the bars
+/// so that the cards on them stand out. A phone keeps its width for the
+/// cards.
 fn central_frame(ui: &Ui) -> Frame {
     let pal = theme::palette(ui.visuals().dark_mode);
     let margin = match layout::current(ui.ctx()) {

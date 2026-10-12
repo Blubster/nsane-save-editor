@@ -23,7 +23,6 @@ use nsane::Document;
 use nsane::crash3::LevelId;
 
 use crate::app::{Action, Nav};
-use crate::dialog;
 use crate::theme::SPACING;
 
 /// What the Crash 3 tab keeps between frames.
@@ -158,17 +157,24 @@ impl Crash3Ui {
             .id_salt("overview")
             .auto_shrink([false, true])
             .show(ui, |ui| {
-                ui.heading("Overview");
-                ui.add_space(SPACING / 2.0);
-                overview::progress(ui, &totals);
-                ui.add_space(SPACING);
-                overview::lives(ui, doc, &mut self.lives, actions);
-                dialog::section(ui, "Collected");
-                overview::totals(ui, doc, &totals, actions);
-                overview::bosses(ui, doc, &totals, selected, nav);
-                overview::super_powers(ui, doc, actions);
-                overview::story(ui, doc, &mut self.scenes.open);
-                overview::diagnostics(ui, doc, &mut self.diagnostics.open);
+                let gap = rooms::CARD_GAP - ui.spacing().item_spacing.y;
+                rooms::card(ui, |ui| {
+                    overview::progress(ui, &totals);
+                    ui.add_space(SPACING);
+                    overview::lives(ui, doc, &mut self.lives, actions);
+                });
+                ui.add_space(gap);
+                rooms::card(ui, |ui| overview::totals(ui, doc, &totals, actions));
+                ui.add_space(gap);
+                rooms::card(ui, |ui| overview::bosses(ui, doc, &totals, selected, nav));
+                ui.add_space(gap);
+                rooms::card(ui, |ui| overview::super_powers(ui, doc, actions));
+                ui.add_space(gap);
+                rooms::card(ui, |ui| overview::story(ui, doc, &mut self.scenes.open));
+                ui.add_space(gap);
+                rooms::card(ui, |ui| {
+                    overview::diagnostics(ui, doc, &mut self.diagnostics.open)
+                });
             });
     }
 
