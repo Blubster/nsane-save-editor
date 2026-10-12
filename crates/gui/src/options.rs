@@ -13,12 +13,10 @@ pub enum View {
     Unsaved,
     /// A refused time in the selected level's third leaderboard field.
     InvalidTime,
-    /// The Progress tab.
-    Progress,
-    /// The Progress tab with the dialog that unlocks the first locked warp
-    /// room.
+    /// The dialog that unlocks the first locked warp room, as its padlock
+    /// opens it.
     UnlockDialog,
-    /// The Progress tab scrolled to the story scenes.
+    /// The story scenes dialog.
     Cutscenes,
     /// The dialog of the "Complete everything" preset.
     PresetAll,
@@ -36,10 +34,9 @@ pub enum View {
 
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))] // set from the command line
 impl View {
-    pub const ALL: [View; 11] = [
+    pub const ALL: [View; 10] = [
         View::Unsaved,
         View::InvalidTime,
-        View::Progress,
         View::UnlockDialog,
         View::Cutscenes,
         View::PresetAll,
@@ -54,7 +51,6 @@ impl View {
         match self {
             View::Unsaved => "unsaved",
             View::InvalidTime => "invalid-time",
-            View::Progress => "progress",
             View::UnlockDialog => "unlock-dialog",
             View::Cutscenes => "cutscenes",
             View::PresetAll => "preset-108",
@@ -122,11 +118,11 @@ usage: nsane-save-editor [options]
   --select LEVEL         select a level by its key, e.g. toadvillage
   --view NAME            set up a state at start: unsaved (the question
                          before closing), invalid-time (a refused time
-                         typed for the selected level), progress (the
-                         Progress tab), unlock-dialog (its dialog for the
-                         first locked warp room), cutscenes (its story
-                         scenes), preset-108 and preset-story3 (preset
-                         dialogs), diagnostics (the diagnostics panel),
+                         typed for the selected level), unlock-dialog
+                         (the dialog that unlocks the first locked warp
+                         room), cutscenes (the story scenes dialog),
+                         preset-108 and preset-story3 (preset dialogs),
+                         diagnostics (the diagnostics panel),
                          save-review (the review shown before saving),
                          convert (the dialog that converts the save to
                          the other platform), about (the About dialog)
@@ -300,5 +296,6 @@ mod tests {
             Some(View::InvalidTime)
         );
         assert!(parse(&["--view", "nothing"]).is_err());
+        assert!(parse(&["--view", "progress"]).is_err());
     }
 }

@@ -394,6 +394,15 @@ pub fn plural(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
 }
 
+/// "a, b and c".
+pub fn and_list(items: &[&str]) -> String {
+    match items {
+        [] => String::new(),
+        [one] => (*one).to_owned(),
+        [init @ .., last] => format!("{} and {last}", init.join(", ")),
+    }
+}
+
 /// The frame of a floating window (the diagnostics panel), like a dialog's.
 pub fn window_frame(ctx: &Context) -> Frame {
     let style = ctx.global_style();
@@ -411,7 +420,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn plurals_and_totals_read_as_text() {
+    fn plurals_lists_and_totals_read_as_text() {
         assert_eq!(plural(1, "change", "changes"), "1 change");
         assert_eq!(plural(0, "change", "changes"), "0 changes");
         assert_eq!(plural(3, "change", "changes"), "3 changes");
@@ -421,5 +430,7 @@ mod tests {
             after: "108%".into(),
         };
         assert_eq!(total.text(), "Percentage: 19% → 108%");
+        assert_eq!(and_list(&["a", "b", "c"]), "a, b and c");
+        assert_eq!(and_list(&["a"]), "a");
     }
 }

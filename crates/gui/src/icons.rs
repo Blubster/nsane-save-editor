@@ -254,6 +254,96 @@ pub fn icon_toggle_named(
     }
 }
 
+/// The least clickable square of an [`IconButton`].
+pub const MIN_HIT: f32 = 24.0;
+
+/// An icon that acts when clicked instead of toggling: a lock that opens a
+/// dialog, a boss that selects itself. The clickable square may be larger
+/// than the icon, which is centred in it. Add it with `ui.add`; the caller
+/// adds the tooltip and acts on `clicked()`.
+pub struct IconButton<'a> {
+    icon: Icon,
+    name: &'a str,
+    owned: bool,
+    selected: Option<bool>,
+    size: f32,
+    hit: f32,
+}
+
+impl<'a> IconButton<'a> {
+    /// `name` is what screen readers and tests find it by.
+    pub fn new(icon: Icon, name: &'a str) -> Self {
+        Self {
+            icon,
+            name,
+            owned: true,
+            selected: None,
+            size: theme::ICON_SMALL,
+            hit: MIN_HIT,
+        }
+    }
+
+    /// Drawn as missing when `owned` is false, like an empty slot.
+    pub fn owned(mut self, owned: bool) -> Self {
+        self.owned = owned;
+        self
+    }
+
+    /// A button that selects something: highlighted while it is selected.
+    pub fn selected(mut self, selected: bool) -> Self {
+        self.selected = Some(selected);
+        self
+    }
+
+    /// The icon's size, and the clickable square around it: at least the
+    /// icon.
+    pub fn size(mut self, size: f32, hit: f32) -> Self {
+        self.size = size;
+        self.hit = hit.max(size);
+        self
+    }
+}
+
+impl egui::Widget for IconButton<'_> {
+    fn ui(self, ui: &mut Ui) -> Response {
+        let (rect, response) = ui.allocate_exact_size(Vec2::splat(self.hit), Sense::click());
+        response.widget_info(|| match self.selected {
+            Some(selected) => WidgetInfo::selected(WidgetType::Button, true, selected, self.name),
+            None => WidgetInfo::labeled(WidgetType::Button, true, self.name),
+        });
+        if ui.is_rect_visible(rect) {
+            let dark = ui.visuals().dark_mode;
+            let pal = theme::palette(dark);
+            let hovered = response.hovered() || response.has_focus();
+            let icon = Rect::from_center_size(rect.center(), Vec2::splat(self.size));
+            // At least 2 points around the icon, as around a toggle.
+            let back = rect.union(icon.expand(2.0));
+            let radius = CornerRadius::same(theme::ROUNDING_SMALL);
+            if self.selected == Some(true) {
+                ui.painter().rect_filled(back, radius, pal.selection);
+            } else if hovered {
+                ui.painter().rect_filled(back, radius, pal.hover_bg);
+            }
+            if response.has_focus() {
+                ui.painter().rect_stroke(
+                    back,
+                    radius,
+                    Stroke::new(1.0, pal.accent.base),
+                    StrokeKind::Inside,
+                );
+            }
+            let presence = if self.owned {
+                Presence::Owned
+            } else {
+                Presence::Missing
+            };
+            let state = IconState::new(presence).hovered(hovered);
+            paint(ui.painter(), icon, self.icon, state, dark);
+        }
+        response.on_hover_cursor(CursorIcon::PointingHand)
+    }
+}
+
 type P = [f32; 2];
 
 /// Draws in the icon's unit square, mapping colours by state.

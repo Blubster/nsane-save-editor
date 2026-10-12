@@ -365,8 +365,9 @@ pub fn boss_icons(ui: &mut Ui, doc: &Document, level: LevelId, actions: &mut Vec
         if on { "on" } else { "off" },
         if on { "off" } else { "on" },
     );
-    let response =
-        icons::icon_toggle(ui, Icon::Ability(ability), on, true, ICON).on_hover_text(tip);
+    let name = format!("{}: {}", level.name(), ability.name());
+    let response = icons::icon_toggle_named(ui, Icon::Ability(ability), &name, on, true, ICON)
+        .on_hover_text(tip);
     if response.clicked() {
         push(actions, doc, Edit::SetAbility { ability, on: !on });
     }

@@ -672,7 +672,7 @@ fn every_collectible_toggle_is_one_edit() {
         ("Bone Yard: second gem", "Bone Yard: second gem on"),
         ("Toad Village: crystal", "Toad Village: crystal off"),
         ("Dr. N. Tropy: defeated", "Dr. N. Tropy: defeated"),
-        ("Death Tornado Spin", "Death Tornado Spin: on"),
+        ("Dr. N. Tropy: Death Tornado Spin", "Death Tornado Spin: on"),
         ("Hub: bonus gem", "Bonus gem: on"),
     ] {
         let before = history(&harness).len();
@@ -991,7 +991,7 @@ fn the_invalid_time_view_shows_a_refused_entry() {
     );
 }
 
-// ------------------------------------------------------------ progress tab
+// ------------------------------------------------ padlocks and story scenes
 
 /// Clicks a button that opens a dialog. The dialog appears the frame after
 /// the click, and its first frame only measures it: one more step. It keeps
@@ -1001,25 +1001,14 @@ fn open_dialog(harness: &mut Harness<'_, App>, label: &str) {
     harness.run_steps(1);
 }
 
-/// The Progress tab, in a window tall enough for its cards stacked.
-fn progress_harness(rel: &str) -> Harness<'static, App> {
-    let mut harness = themed(
-        Harness::builder().with_size(Vec2::new(1280.0, 2600.0)),
-        opening(repo_file(rel)),
-    );
-    harness.run_steps(2);
-    click(&mut harness, "Progress");
-    harness
-}
-
 #[test]
 fn unlocking_room_4_matches_the_golden_output() {
-    use crate::games::crash3::Tab;
-    let mut harness = progress_harness("tests/saves/game/0019.sav");
-    assert_eq!(harness.state().crash3.tab(), Tab::Progress);
+    let mut harness = tall_harness(opening(repo_file("tests/saves/game/0019.sav")));
     // Rooms 1–3 are open on 0019: only rooms 4 and 5 offer an unlock.
-    assert!(harness.query_by_label("Unlock up to room 3…").is_none());
-    open_dialog(&mut harness, "Unlock up to room 4…");
+    harness.get_by_label("Warp Room 3: open");
+    assert!(harness.query_by_label("Warp Room 3: locked").is_none());
+    open_dialog(&mut harness, "Warp Room 4: locked");
+    harness.get_by_label("Unlock up to Warp Room 4");
     for option in [
         "Also grant the abilities of the defeated bosses",
         "Skip their story scenes",
@@ -1047,16 +1036,17 @@ fn unlocking_room_4_matches_the_golden_output() {
         sha256_hex(&bytes),
         golden_sha256("ops/unlock_warp_room_4_all_0019")
     );
-    // Undo keeps the tab.
+    // Room 4 is open now; its padlock no longer opens anything.
+    harness.get_by_label("Warp Room 4: open");
     press(&mut harness, Modifiers::COMMAND, Key::Z);
     assert!(history(&harness).is_empty());
-    assert_eq!(harness.state().crash3.tab(), Tab::Progress);
+    harness.get_by_label("Warp Room 4: locked");
 }
 
 #[test]
 fn the_preview_runs_only_when_the_options_change() {
-    let mut harness = progress_harness("tests/saves/game/0019.sav");
-    open_dialog(&mut harness, "Unlock up to room 5…");
+    let mut harness = tall_harness(opening(repo_file("tests/saves/game/0019.sav")));
+    open_dialog(&mut harness, "Warp Room 5: locked");
     harness.run_steps(5);
     assert_eq!(harness.state().crash3.preview_runs(), Some(1));
     click(&mut harness, "Skip their story scenes");
@@ -1070,18 +1060,27 @@ fn the_preview_runs_only_when_the_options_change() {
     assert!(save.ability(nsane::crash3::Ability::Bazooka));
 
     // Cancel applies nothing.
-    let mut harness = progress_harness("tests/saves/game/0019.sav");
-    open_dialog(&mut harness, "Unlock up to room 4…");
+    let mut harness = tall_harness(opening(repo_file("tests/saves/game/0019.sav")));
+    open_dialog(&mut harness, "Warp Room 4: locked");
     click(&mut harness, "Cancel");
     assert!(!harness.state().crash3.has_dialog());
     assert!(history(&harness).is_empty());
+}
+
+/// The story scenes dialog, opened from the overview: its Edit… button is
+/// under the fold at 800 points.
+fn scenes_harness(rel: &str) -> Harness<'static, App> {
+    let mut harness = tall_harness(opening(repo_file(rel)));
+    open_dialog(&mut harness, "Edit…");
+    assert!(harness.state().crash3.has_dialog());
+    harness
 }
 
 #[test]
 fn skip_all_story_scenes_leaves_the_18_scene_keys() {
     use nsane::crash3::CUTSCENES;
     use nsane::crash3::tables::{cutscene_key, cutscene_name};
-    let mut harness = progress_harness("tests/saves/game/0019.sav");
+    let mut harness = scenes_harness("tests/saves/game/0019.sav");
     click(&mut harness, "Skip all story scenes");
     assert_eq!(history(&harness), ["All story scenes: seen"]);
     let scenes: Vec<String> = doc(&harness)
@@ -1098,19 +1097,26 @@ fn skip_all_story_scenes_leaves_the_18_scene_keys() {
     expected.sort();
     assert_eq!(expected.len(), 18);
     assert_eq!(scenes, expected);
-    // Nothing left to skip.
+    // Nothing left to skip; the dialog stays open, and the overview counts
+    // them all.
     assert!(
         harness
             .get_by_label("Skip all story scenes")
             .accesskit_node()
             .is_disabled()
     );
+    assert!(harness.state().crash3.has_dialog());
+    harness.get_by_label("Scenes: 18 / 18 seen");
+    click(&mut harness, "Close");
+    assert!(!harness.state().crash3.has_dialog());
 }
 
 #[test]
 fn opening_the_secret_room_up_to_29() {
-    let mut harness = progress_harness("tests/saves/game/0019.sav");
-    open_dialog(&mut harness, "Open up to 29…");
+    let mut harness = tall_harness(opening(repo_file("tests/saves/game/0019.sav")));
+    harness.get_by_label("1 relic · next level at 5");
+    open_dialog(&mut harness, "29 Future Frenzy: locked");
+    harness.get_by_label("Open the secret warp room up to level 29");
     harness.get_by_label("Relics: 1 → 20");
     click(&mut harness, "Apply");
     assert_eq!(
@@ -1118,8 +1124,7 @@ fn opening_the_secret_room_up_to_29() {
         ["Reach 20 relics: sapphire on 19 levels"]
     );
     assert!(doc(&harness).current().totals().relics() >= 20);
-    // The room grid shows 26–29 open and 30 locked.
-    click(&mut harness, "Levels");
+    // The card shows 26–29 open and 30 locked.
     for name in [
         "26 Ski Crazed",
         "27 Hang'em High",
@@ -1129,33 +1134,32 @@ fn opening_the_secret_room_up_to_29() {
         harness.get_by_label(&format!("{name}: open"));
     }
     harness.get_by_label("30 Rings of Power: locked");
+    harness.get_by_label("20 relics · next level at 25");
+    // An open level's padlock opens nothing.
+    click(&mut harness, "29 Future Frenzy: open");
+    assert!(!harness.state().crash3.has_dialog());
 }
 
 #[test]
 fn super_powers_and_scenes_are_one_step_each() {
     use nsane::crash3::{ABILITIES, Ability};
-    let mut harness = progress_harness("tests/saves/game/0019.sav");
+    let mut harness = tall_harness(opening(repo_file("tests/saves/game/0019.sav")));
+    let on = |h: &Harness<'_, App>| {
+        ABILITIES
+            .iter()
+            .filter(|&&a| doc(h).current().ability(a))
+            .count()
+    };
+    let before = on(&harness);
+    harness.get_by_label(&format!("Super powers: {before} / 5"));
     click(&mut harness, "Super power: Speed Shoes");
     assert!(doc(&harness).current().ability(Ability::SpeedShoes));
-    click(&mut harness, "All on");
-    assert!(
-        ABILITIES
-            .iter()
-            .all(|&a| doc(&harness).current().ability(a))
-    );
-    assert!(
-        harness
-            .get_by_label("All on")
-            .accesskit_node()
-            .is_disabled()
-    );
-    click(&mut harness, "All off");
-    assert!(
-        ABILITIES
-            .iter()
-            .all(|&a| !doc(&harness).current().ability(a))
-    );
+    click(&mut harness, "Super power: Super Charged Body Slam");
+    assert!(!doc(&harness).current().ability(Ability::BodySlam));
+    assert_eq!(on(&harness), before);
+    harness.get_by_label(&format!("Super powers: {before} / 5"));
 
+    open_dialog(&mut harness, "Edit…");
     click(&mut harness, "Dr. N. Tropy: mark all seen");
     click(&mut harness, "NGin Intro: seen");
     let save = doc(&harness).current();
@@ -1174,21 +1178,85 @@ fn super_powers_and_scenes_are_one_step_each() {
         history(&harness),
         [
             "Speed Shoes: on",
-            "All super powers: on",
-            "All super powers: off",
+            "Super Charged Body Slam: off",
             "Dr. N. Tropy scenes: seen",
             "Scene C3_NGin_Intro: seen",
             "Dr. N. Tropy scenes: not seen",
         ]
     );
-    // A boss toggle on the rooms list, as in the grid.
-    click(&mut harness, "N. Gin: defeated");
-    assert!(doc(&harness).current().boss_defeated(level("ngin")));
 }
 
 #[test]
-fn the_progress_views() {
-    use crate::games::crash3::Tab;
+fn an_overview_boss_selects_it() {
+    let mut harness = harness(opening(repo_file("tests/saves/game/0019.sav")));
+    harness.get_by_label("Bosses: 2 / 5");
+    click(&mut harness, "Overview: N. Gin");
+    assert_eq!(harness.state().selected, Some(level("ngin")));
+    let node = harness.get_by_label("Overview: N. Gin");
+    assert_eq!(
+        node.accesskit_node().toggled(),
+        Some(egui::accesskit::Toggled::True)
+    );
+    // The details show the boss, and selecting is not an edit.
+    harness.get_by_label("Ability: Fruit Bazooka");
+    assert!(history(&harness).is_empty());
+}
+
+/// Every story-level tool has a place: the padlocks of the locked rooms and
+/// secret levels, the story scenes dialog, the grid's boss rows and the
+/// Presets menu.
+#[test]
+fn every_story_tool_is_reachable() {
+    use nsane::crash3::{ABILITIES, BOSSES, CUTSCENES, SECRET_ROOM};
+    let mut harness = tall_harness(opening(repo_file("tests/saves/game/initial_game.sav")));
+    // A new game: rooms 2–5 and every secret level are locked.
+    for room in 2..=5 {
+        open_dialog(&mut harness, &format!("Warp Room {room}: locked"));
+        harness.get_by_label(&format!("Unlock up to Warp Room {room}"));
+        click(&mut harness, "Cancel");
+        assert!(!harness.state().crash3.has_dialog());
+    }
+    for entry in SECRET_ROOM {
+        let name = format!("{} {}: locked", entry.number, entry.level.name());
+        open_dialog(&mut harness, &name);
+        harness.get_by_label(&format!(
+            "Open the secret warp room up to level {}",
+            entry.number
+        ));
+        click(&mut harness, "Cancel");
+    }
+    for (boss, ability) in BOSSES.into_iter().zip(ABILITIES) {
+        harness.get_by_label(&format!("{}: defeated", boss.name()));
+        harness.get_by_label(&format!("{}: {}", boss.name(), ability.name()));
+    }
+    assert!(history(&harness).is_empty());
+
+    open_dialog(&mut harness, "Edit…");
+    for step in &CUTSCENES {
+        let step_name = step.boss().map_or("Start", |b| b.name());
+        harness.get_by_label(&format!("{step_name}: mark all seen"));
+        harness.get_by_label(&format!("{step_name}: mark all unseen"));
+    }
+    // The Start scenes, which no boss's details show.
+    click(&mut harness, "Start: mark all seen");
+    for scene in ["Cortex Taunt 1", "AkuAku TimeTrialInfo", "AkuAku Warning"] {
+        let label = format!("{scene}: seen");
+        let node = harness.get_by_label(&label);
+        assert_eq!(
+            node.accesskit_node().toggled(),
+            Some(egui::accesskit::Toggled::True)
+        );
+    }
+    assert_eq!(history(&harness), ["Start scenes: seen"]);
+    click(&mut harness, "Close");
+
+    click(&mut harness, "Presets");
+    harness.get_by_label("All super powers on or off…");
+    harness.get_by_label("Skip all story scenes…");
+}
+
+#[test]
+fn the_unlock_and_scenes_views() {
     let options = |view| Options {
         view: Some(view),
         ..opening_options("tests/saves/game/0019.sav")
@@ -1197,10 +1265,9 @@ fn the_progress_views() {
     assert!(harness.state().crash3.has_dialog());
     harness.get_by_label("Unlock up to Warp Room 4");
     let harness = self::harness(app(options(View::Cutscenes)));
-    assert_eq!(harness.state().crash3.tab(), Tab::Progress);
+    assert!(harness.state().crash3.has_dialog());
     harness.get_by_label("Story scenes");
-    let harness = self::harness(app(options(View::Progress)));
-    assert_eq!(harness.state().crash3.tab(), Tab::Progress);
+    harness.get_by_label("Skip all story scenes");
 }
 
 // ------------------------------------------------- presets, diagnostics, review

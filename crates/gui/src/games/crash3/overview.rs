@@ -1,22 +1,19 @@
-//! The overview panel: progress, totals, lives, the bonus gem, the secret
-//! warp room, the story and the diagnostics. Totals are counted from the
+//! The overview panel: progress, totals, bosses, super powers, lives, the
+//! bonus gem, the story and the diagnostics. Totals are counted from the
 //! save as it is now; the stored summary is only rewritten when saving.
 
-use egui::{Align, DragValue, Layout, RichText, Stroke, Ui, Vec2};
+use egui::{Align, DragValue, Layout, RichText, Stroke, Ui, Vec2, WidgetInfo, WidgetType};
 use nsane::Document;
 use nsane::crash3::tables::{
     MAX_BONUS_GEMS, MAX_BOSSES, MAX_CLEAR_GEMS, MAX_COLORED_GEMS, MAX_CRYSTALS, MAX_GEMS,
     MAX_PERCENT, MAX_RELICS, MAX_SECOND_GEMS,
 };
-use nsane::crash3::{
-    BOSSES, Edit, LevelId, PICKUP_LIVES_MAX, Relic, SECRET_ROOM, Severity, Totals,
-};
+use nsane::crash3::{ABILITIES, BOSSES, Edit, LevelId, PICKUP_LIVES_MAX, Relic, Severity, Totals};
 
-use super::level_row;
-use super::rooms;
+use super::{level_row, scenes};
 use crate::app::{Action, static_icon};
 use crate::dialog;
-use crate::icons::{self, Boss, Icon, IconState};
+use crate::icons::{self, Boss, Icon, IconButton};
 use crate::theme::{self, SPACING};
 
 /// The range the editor writes, as the lives edit accepts it.
@@ -106,8 +103,8 @@ fn count_row(ui: &mut Ui, icon: Icon, name: &str, count: String, tip: String) {
     .on_hover_text(tip);
 }
 
-/// Crystals, gems, relics and bosses.
-pub fn totals(ui: &mut Ui, doc: &Document, totals: &Totals) {
+/// Crystals, gems and relics.
+pub fn totals(ui: &mut Ui, totals: &Totals) {
     count_row(
         ui,
         Icon::Crystal,
@@ -146,38 +143,93 @@ pub fn totals(ui: &mut Ui, doc: &Document, totals: &Totals) {
             ui.label(count.to_string());
         }
     });
+}
+
+/// A section title with a count on the right: "Bosses 2 / 5". The count
+/// is named "Bosses: 2 / 5" for screen readers and tests.
+fn counted_section(ui: &mut Ui, title: &str, count: String, tip: &str) {
+    ui.add_space(SPACING);
     ui.horizontal(|ui| {
-        ui.label("Bosses");
+        ui.label(theme::bold(title).size(theme::FONT_TITLE));
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            ui.label(theme::bold(format!("{} / {MAX_BOSSES}", totals.bosses)));
+            let name = format!("{title}: {count}");
+            ui.label(theme::bold(count))
+                .widget_info(|| WidgetInfo::labeled(WidgetType::Label, true, &name));
         });
-    });
+    })
+    .response
+    .on_hover_text(tip);
+    ui.add_space(2.0);
+}
+
+/// The defeated bosses. A click on one selects it.
+pub fn bosses(ui: &mut Ui, doc: &Document, totals: &Totals, selected: &mut Option<LevelId>) {
+    counted_section(
+        ui,
+        "Bosses",
+        format!("{} / {MAX_BOSSES}", totals.bosses),
+        "Each defeated boss counts 1% and opens the next warp room",
+    );
+    let save = doc.current();
     ui.horizontal(|ui| {
-        let save = doc.current();
         for boss in Boss::ALL {
             let level = boss.level();
             let defeated = save.boss_defeated(level);
-            let state = if defeated {
-                IconState::OWNED
-            } else {
-                IconState::MISSING
-            };
-            let (rect, response) =
-                ui.allocate_exact_size(Vec2::splat(theme::ICON_MEDIUM), egui::Sense::hover());
-            icons::paint(
-                ui.painter(),
-                rect,
-                Icon::Boss(boss),
-                state,
-                ui.visuals().dark_mode,
-            );
-            response.on_hover_text(format!(
-                "{}: {}",
-                level.name(),
-                if defeated { "defeated" } else { "not defeated" }
-            ));
+            // Not the grid's or the details' names: each label is found once.
+            let name = format!("Overview: {}", level.name());
+            let response = ui
+                .add(
+                    IconButton::new(Icon::Boss(boss), &name)
+                        .owned(defeated)
+                        .selected(*selected == Some(level))
+                        .size(theme::ICON_MEDIUM, icons::MIN_HIT),
+                )
+                .on_hover_text(format!(
+                    "{}: {}. Click to show its details.",
+                    level.name(),
+                    if defeated { "defeated" } else { "not defeated" }
+                ));
+            if response.clicked() {
+                *selected = Some(level);
+            }
         }
     });
+}
+
+/// A toggle per super power, with its name.
+pub fn super_powers(ui: &mut Ui, doc: &Document, actions: &mut Vec<Action>) {
+    let save = doc.current();
+    let on_count = ABILITIES.iter().filter(|&&a| save.ability(a)).count();
+    counted_section(
+        ui,
+        "Super powers",
+        format!("{on_count} / {}", ABILITIES.len()),
+        "A super power works even if the boss that grants it isn't beaten (verified in game)",
+    );
+    for (ability, boss) in ABILITIES.into_iter().zip(BOSSES) {
+        let on = save.ability(ability);
+        let tip = format!(
+            "Normally granted by {}. Click to turn it {}.",
+            boss.name(),
+            if on { "off" } else { "on" }
+        );
+        ui.horizontal(|ui| {
+            let name = format!("Super power: {}", ability.name());
+            let response = icons::icon_toggle_named(
+                ui,
+                Icon::Ability(ability),
+                &name,
+                on,
+                true,
+                theme::ICON_MEDIUM,
+            )
+            .on_hover_text(&tip);
+            if response.clicked() {
+                level_row::push(actions, doc, Edit::SetAbility { ability, on: !on });
+            }
+            ui.label(ability.name()).on_hover_text(&tip);
+        });
+    }
 }
 
 /// The bonus gem toggle, with a badge when the hub would give it now.
@@ -226,14 +278,6 @@ fn badge(ui: &mut Ui, text: &str, color: egui::Color32) -> egui::Response {
         .response
 }
 
-/// The relic count against the secret room's thresholds, and its levels.
-pub fn secret_room(ui: &mut Ui, totals: &Totals, selected: &mut Option<LevelId>) {
-    let relics = totals.relics();
-    dialog::section(ui, "Secret warp room");
-    relic_bar(ui, relics);
-    rooms::secret_room_list(ui, relics, selected);
-}
-
 /// A thin bar filled to `fraction`; empty at 0, unlike egui's progress bar.
 fn bar(ui: &Ui, rect: egui::Rect, fraction: f32, color: egui::Color32) {
     let pal = theme::palette(ui.visuals().dark_mode);
@@ -252,48 +296,10 @@ fn bar(ui: &Ui, rect: egui::Rect, fraction: f32, color: egui::Color32) {
     );
 }
 
-/// A bar of the relic count with a tick at each level's threshold.
-fn relic_bar(ui: &mut Ui, relics: u32) {
-    let pal = theme::palette(ui.visuals().dark_mode);
-    let width = ui.available_width();
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 26.0), egui::Sense::hover());
-    let bar_rect = egui::Rect::from_min_size(rect.min, Vec2::new(width, 8.0));
-    let fraction = |count: u32| count.min(MAX_RELICS) as f32 / MAX_RELICS as f32;
-    bar(ui, bar_rect, fraction(relics), pal.relic_sapphire.base);
-    let bar = bar_rect;
-    let painter = ui.painter();
-    let x = |count: u32| bar.left() + bar.width() * fraction(count);
-    for entry in SECRET_ROOM {
-        let tx = x(u32::from(entry.relics));
-        let color = if relics >= u32::from(entry.relics) {
-            pal.text
-        } else {
-            pal.text_weak
-        };
-        painter.line_segment(
-            [
-                egui::pos2(tx, bar.top() - 2.0),
-                egui::pos2(tx, bar.bottom() + 2.0),
-            ],
-            Stroke::new(1.5, color),
-        );
-        painter.text(
-            egui::pos2(tx, bar.bottom() + 3.0),
-            egui::Align2::CENTER_TOP,
-            entry.relics.to_string(),
-            egui::FontId::proportional(theme::FONT_SMALL),
-            color,
-        );
-    }
-    response.on_hover_text(format!(
-        "{relics} of {MAX_RELICS} relics. Each 5 relics, of any tier, open the next level \
-         of the secret warp room."
-    ));
-}
-
-/// Story completion, the last level played and whether the save was made
-/// inside a level.
-pub fn story(ui: &mut Ui, doc: &Document) {
+/// Story completion, the last level played, whether the save was made
+/// inside a level, and the story scenes seen, whose Edit… button sets
+/// `open_scenes`.
+pub fn story(ui: &mut Ui, doc: &Document, open_scenes: &mut bool) {
     dialog::section(ui, "Story");
     let save = doc.current();
     let cortex = BOSSES[BOSSES.len() - 1];
@@ -319,6 +325,19 @@ pub fn story(ui: &mut Ui, doc: &Document) {
     if save.active_progression_index().is_some_and(|i| i != 0) {
         ui.label("Saved inside a level");
     }
+    let (seen, total) = scenes::seen_count(save);
+    // The button goes under the count when the panel is too narrow.
+    ui.horizontal_wrapped(|ui| {
+        ui.add(egui::Label::new(format!("Scenes: {seen} / {total} seen")).extend())
+            .on_hover_text("A scene marked as seen doesn't play");
+        if ui
+            .button("Edit…")
+            .on_hover_text("Mark story scenes as seen or not seen")
+            .clicked()
+        {
+            *open_scenes = true;
+        }
+    });
 }
 
 /// Counts by severity, which open the diagnostics panel, then the

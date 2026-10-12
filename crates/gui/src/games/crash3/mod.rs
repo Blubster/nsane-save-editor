@@ -1,15 +1,16 @@
-//! Crash Bandicoot 3: Warped: the overview, the central area (the warp room
-//! grid, or the story progress) and the level details.
+//! Crash Bandicoot 3: Warped: the overview, the warp room grid in the middle
+//! and the level details.
 
+mod bulk;
 mod diagnostics_ui;
 mod level_panel;
 pub mod level_row;
 mod overview;
 mod presets_ui;
 mod preview;
-mod progress;
 mod review;
 mod rooms;
+mod scenes;
 pub mod transfer_ui;
 
 pub use diagnostics_ui::save_blocker;
@@ -24,53 +25,24 @@ use crate::app::Action;
 use crate::dialog;
 use crate::theme::SPACING;
 
-/// What the central area shows.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub enum Tab {
-    /// The warp room grid.
-    #[default]
-    Levels,
-    /// Warp rooms, the secret room, super powers and story scenes.
-    Progress,
-}
-
-impl Tab {
-    const ALL: [Tab; 2] = [Tab::Levels, Tab::Progress];
-
-    fn title(self) -> &'static str {
-        match self {
-            Tab::Levels => "Levels",
-            Tab::Progress => "Progress",
-        }
-    }
-
-    fn tip(self) -> &'static str {
-        match self {
-            Tab::Levels => "Every level and boss, room by room",
-            Tab::Progress => "Unlock warp rooms, the secret room, super powers and story scenes",
-        }
-    }
-}
-
 /// What the Crash 3 tab keeps between frames.
 #[derive(Debug, Default)]
 pub struct Crash3Ui {
     /// Lives being dragged or typed, applied when the user lets go.
     lives: Option<i32>,
     panel: level_panel::LevelPanel,
-    tab: Tab,
-    progress: progress::Progress,
+    bulk: bulk::BulkUi,
+    scenes: scenes::Scenes,
     presets: presets_ui::Presets,
     diagnostics: diagnostics_ui::DiagnosticsPanel,
 }
 
 impl Crash3Ui {
     /// Drops values being edited and open questions, when the document
-    /// changes under them (undo, redo, another file). The tab and the
-    /// diagnostics panel stay.
+    /// changes under them (undo, redo, another file). The diagnostics panel
+    /// stays.
     pub fn reset(&mut self) {
         *self = Self {
-            tab: self.tab,
             diagnostics: std::mem::take(&mut self.diagnostics),
             ..Self::default()
         };
@@ -78,7 +50,10 @@ impl Crash3Ui {
 
     /// Whether a question of this tab is open: shortcuts wait meanwhile.
     pub fn has_dialog(&self) -> bool {
-        self.panel.has_dialog() || self.progress.has_dialog() || self.presets.has_dialog()
+        self.panel.has_dialog()
+            || self.bulk.has_dialog()
+            || self.scenes.has_dialog()
+            || self.presets.has_dialog()
     }
 
     /// The entries of the Presets menu.
@@ -114,8 +89,8 @@ impl Crash3Ui {
         }
     }
 
-    /// The windows over the editor: the preset dialog and the diagnostics
-    /// panel.
+    /// The windows over the editor: the diagnostics panel, and the preset,
+    /// bulk and story scenes dialogs.
     pub fn windows(
         &mut self,
         ctx: &egui::Context,
@@ -125,38 +100,28 @@ impl Crash3Ui {
     ) {
         self.diagnostics.show(ctx, doc, selected, actions);
         self.presets.dialog(ctx, doc, actions);
+        self.bulk.show(ctx, doc, actions);
+        self.scenes.show(ctx, doc, actions);
     }
 
-    /// Shows the Progress tab (`--view progress`).
-    pub fn show_progress(&mut self) {
-        self.tab = Tab::Progress;
-    }
-
-    /// The Progress tab with the unlock dialog of the first locked warp
-    /// room, or of room 5 (`--view unlock-dialog`).
+    /// The unlock dialog of the first locked warp room, or of room 5, as
+    /// its padlock opens it (`--view unlock-dialog`).
     pub fn unlock_dialog(&mut self, doc: &Document) {
-        self.tab = Tab::Progress;
         let room = (2..=5)
             .find(|&room| !rooms::room_open(doc, room))
             .unwrap_or(5);
-        self.progress.open_dialog(progress::Bulk::unlock(room));
+        self.bulk.open(bulk::Bulk::unlock(room));
     }
 
-    #[cfg(test)]
-    pub fn tab(&self) -> Tab {
-        self.tab
-    }
-
-    /// How many previews the open dialog of the Progress tab has computed.
+    /// How many previews the open bulk dialog has computed.
     #[cfg(test)]
     pub fn preview_runs(&self) -> Option<usize> {
-        self.progress.preview_runs()
+        self.bulk.preview_runs()
     }
 
-    /// The Progress tab, scrolled to the story scenes (`--view cutscenes`).
-    pub fn scroll_to_scenes(&mut self) {
-        self.tab = Tab::Progress;
-        self.progress.scroll_to_scenes();
+    /// The story scenes dialog (`--view cutscenes`).
+    pub fn open_scenes(&mut self) {
+        self.scenes.open = true;
     }
 
     pub fn overview(
@@ -174,12 +139,13 @@ impl Crash3Ui {
                 ui.add_space(SPACING / 2.0);
                 overview::progress(ui, &totals);
                 dialog::section(ui, "Collected");
-                overview::totals(ui, doc, &totals);
+                overview::totals(ui, &totals);
+                overview::bosses(ui, doc, &totals, selected);
+                overview::super_powers(ui, doc, actions);
                 dialog::section(ui, "Lives and bonus gem");
                 overview::lives(ui, doc, &mut self.lives, actions);
                 overview::bonus_gem(ui, doc, actions);
-                overview::secret_room(ui, &totals, selected);
-                overview::story(ui, doc);
+                overview::story(ui, doc, &mut self.scenes.open);
                 overview::diagnostics(ui, doc, &mut self.diagnostics.open);
             });
     }
@@ -190,6 +156,7 @@ impl Crash3Ui {
         self.panel.refused_time(doc, level, slot, text);
     }
 
+    /// The warp room grid.
     pub fn central(
         &mut self,
         ui: &mut egui::Ui,
@@ -197,21 +164,10 @@ impl Crash3Ui {
         selected: &mut Option<LevelId>,
         actions: &mut Vec<Action>,
     ) {
-        ui.horizontal(|ui| {
-            for tab in Tab::ALL {
-                if ui
-                    .add(egui::Button::selectable(self.tab == tab, tab.title()))
-                    .on_hover_text(tab.tip())
-                    .clicked()
-                {
-                    self.tab = tab;
-                }
-            }
-        });
-        ui.separator();
-        match self.tab {
-            Tab::Levels => rooms::grid(ui, doc, selected, actions),
-            Tab::Progress => self.progress.show(ui, doc, selected, actions),
+        let mut open = None;
+        rooms::grid(ui, doc, selected, actions, &mut open);
+        if let Some(bulk) = open {
+            self.bulk.open(bulk);
         }
     }
 

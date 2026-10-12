@@ -332,13 +332,12 @@ impl App {
                     app.crash3.refused_time(&file.doc, level, 2, "1:7x");
                 }
             }
-            Some(View::Progress) => app.crash3.show_progress(),
             Some(View::UnlockDialog) => {
                 if let Some(file) = &app.file {
                     app.crash3.unlock_dialog(&file.doc);
                 }
             }
-            Some(View::Cutscenes) => app.crash3.scroll_to_scenes(),
+            Some(View::Cutscenes) => app.crash3.open_scenes(),
             Some(View::PresetAll | View::PresetStory3) => {
                 if let Some(file) = &app.file {
                     let preset = match options.view {
